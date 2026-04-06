@@ -48,10 +48,10 @@ release:
 
     Install with:
     ```bash
-    # macOS / Linux
-    curl -fsSL https://github.com/evatt-labs/kraai-cli/releases/download/v{{ .Version }}/kraai_{{ .Version }}_{{ .Os }}_{{ .Arch }}.tar.gz | tar -xz
-    sudo mv kraai /usr/local/bin/
+    curl -fsSL https://get.kraai.dev | sh
     ```
+
+    Or download a binary directly from the assets below.
 
 changelog:
   sort: asc

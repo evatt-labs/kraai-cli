@@ -1,0 +1,10 @@
+name = "kraai-get"
+main = "index.js"
+compatibility_date = "2024-01-01"
+
+routes = [
+  { pattern = "get.kraai.dev", custom_domain = true, zone_name = "kraai.dev" }
+]
+
+[vars]
+GITHUB_REPO = "evatt-labs/kraai-cli"
