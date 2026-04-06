@@ -1,0 +1,4 @@
+kraai
+kraai.exe
+dist/
+!cmd/

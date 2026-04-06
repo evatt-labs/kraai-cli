@@ -1,0 +1,684 @@
+package client
+
+import (
+	"bytes"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
+	"net/url"
+	"time"
+)
+
+// Client is a thin wrapper around the Kraai API.
+type Client struct {
+	baseURL    string
+	token      string
+	httpClient *http.Client
+}
+
+func New(baseURL, token string) *Client {
+	return &Client{
+		baseURL: baseURL,
+		token:   token,
+		httpClient: &http.Client{
+			Timeout: 30 * time.Second,
+			CheckRedirect: func(req *http.Request, via []*http.Request) error {
+				req.Header.Del("Authorization")
+				if len(via) > 3 {
+					return fmt.Errorf("too many redirects")
+				}
+				return nil
+			},
+		},
+	}
+}
+
+func (c *Client) do(method, path string, body any) (*http.Response, error) {
+	var r io.Reader
+	if body != nil {
+		b, err := json.Marshal(body)
+		if err != nil {
+			return nil, fmt.Errorf("client: marshal: %w", err)
+		}
+		r = bytes.NewReader(b)
+	}
+	req, err := http.NewRequest(method, c.baseURL+path, r)
+	if err != nil {
+		return nil, fmt.Errorf("client: request: %w", err)
+	}
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
+	if c.token != "" {
+		req.Header.Set("Authorization", "Bearer "+c.token)
+	}
+	return c.httpClient.Do(req)
+}
+
+func (c *Client) decode(resp *http.Response, v any) error {
+	defer resp.Body.Close()
+	if resp.StatusCode >= 400 {
+		b, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("api error %d: %s", resp.StatusCode, string(b))
+	}
+	return json.NewDecoder(resp.Body).Decode(v)
+}
+
+// --- Device Auth ---
+
+type DeviceCodeResponse struct {
+	DeviceCode      string `json:"device_code"`
+	UserCode        string `json:"user_code"`
+	VerificationURI string `json:"verification_uri"`
+	ExpiresIn       int    `json:"expires_in"`
+	Interval        int    `json:"interval"`
+}
+
+func (c *Client) InitiateDeviceFlow() (*DeviceCodeResponse, error) {
+	resp, err := c.do("POST", "/v1/auth/device/code", map[string]string{})
+	if err != nil {
+		return nil, err
+	}
+	var out DeviceCodeResponse
+	return &out, c.decode(resp, &out)
+}
+
+type DeviceTokenResponse struct {
+	Token         string `json:"token"`
+	TokenID       string `json:"token_id"`
+	WorkspaceID   string `json:"workspace_id"`
+	WorkspaceName string `json:"workspace_name"`
+	Email         string `json:"email"`
+	Error         string `json:"error"`
+}
+
+func (c *Client) PollDeviceToken(deviceCode string) (*DeviceTokenResponse, error) {
+	resp, err := c.do("POST", "/v1/auth/device/token", map[string]string{
+		"device_code": deviceCode,
+		"grant_type":  "urn:ietf:params:oauth:grant-type:device_code",
+	})
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	var out DeviceTokenResponse
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return nil, fmt.Errorf("client: decode poll: %w", err)
+	}
+	return &out, nil
+}
+
+// --- Workspaces ---
+
+type Workspace struct {
+	ID           string           `json:"id"`
+	Name         string           `json:"name"`
+	BillingPlan  string           `json:"billing_plan"`
+	OwnerID      string           `json:"owner_id"`
+	Entitlements PlanEntitlements `json:"entitlements"`
+}
+
+type PlanEntitlements struct {
+	Plan                    string `json:"plan"`
+	Label                   string `json:"label"`
+	Summary                 string `json:"summary"`
+	MonthlyPriceCents       int64  `json:"monthly_price_cents"`
+	RequiresPayment         bool   `json:"requires_payment"`
+	ActiveHostedServers     int    `json:"active_hosted_servers"`
+	MemberSeats             int    `json:"member_seats"`
+	IncludedRuntimeRequests int64  `json:"included_runtime_requests"`
+	LogRetentionDays        int    `json:"log_retention_days"`
+	SupportsClientOAuth     bool   `json:"supports_client_oauth"`
+	SupportsUpstreamOAuth   bool   `json:"supports_upstream_oauth"`
+	SupportsRollback        bool   `json:"supports_rollback"`
+	SupportsCustomDomains   bool   `json:"supports_custom_domains"`
+	UpgradeTargetPlan       string `json:"upgrade_target_plan,omitempty"`
+}
+
+func (c *Client) ListWorkspaces() ([]Workspace, error) {
+	resp, err := c.do("GET", "/v1/workspaces", nil)
+	if err != nil {
+		return nil, err
+	}
+	var out struct {
+		Workspaces []Workspace `json:"workspaces"`
+	}
+	return out.Workspaces, c.decode(resp, &out)
+}
+
+// --- API Tokens ---
+
+type APIToken struct {
+	ID         string  `json:"id"`
+	Name       string  `json:"name"`
+	Prefix     string  `json:"prefix"`
+	LastUsedAt *string `json:"last_used_at,omitempty"`
+	CreatedAt  string  `json:"created_at"`
+}
+
+type CreateAPITokenResult struct {
+	Token    APIToken `json:"token"`
+	RawToken string   `json:"raw_token"`
+}
+
+func (c *Client) ListAPITokens(workspaceID string) ([]APIToken, error) {
+	resp, err := c.do("GET", fmt.Sprintf("/v1/workspaces/%s/api-tokens", workspaceID), nil)
+	if err != nil {
+		return nil, err
+	}
+	var out struct {
+		APITokens []APIToken `json:"api_tokens"`
+	}
+	return out.APITokens, c.decode(resp, &out)
+}
+
+func (c *Client) CreateAPIToken(workspaceID, name string) (*CreateAPITokenResult, error) {
+	resp, err := c.do("POST", fmt.Sprintf("/v1/workspaces/%s/api-tokens", workspaceID), map[string]string{"name": name})
+	if err != nil {
+		return nil, err
+	}
+	var out CreateAPITokenResult
+	return &out, c.decode(resp, &out)
+}
+
+func (c *Client) RevokeToken(workspaceID, tokenID string) error {
+	resp, err := c.do("DELETE", fmt.Sprintf("/v1/workspaces/%s/api-tokens/%s", workspaceID, tokenID), nil)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 400 {
+		b, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("api error %d: %s", resp.StatusCode, string(b))
+	}
+	return nil
+}
+
+// --- Workspaces (create) ---
+
+func (c *Client) CreateWorkspace(name string) (*Workspace, error) {
+	resp, err := c.do("POST", "/v1/workspaces", map[string]string{"name": name})
+	if err != nil {
+		return nil, err
+	}
+	var out Workspace
+	return &out, c.decode(resp, &out)
+}
+
+// --- Projects ---
+
+type Project struct {
+	ID          string `json:"id"`
+	WorkspaceID string `json:"workspace_id"`
+	Name        string `json:"name"`
+}
+
+func (c *Client) ListProjects(workspaceID string) ([]Project, error) {
+	resp, err := c.do("GET", fmt.Sprintf("/v1/workspaces/%s/projects", workspaceID), nil)
+	if err != nil {
+		return nil, err
+	}
+	var out struct {
+		Projects []Project `json:"projects"`
+	}
+	return out.Projects, c.decode(resp, &out)
+}
+
+func (c *Client) CreateProject(workspaceID, name string) (*Project, error) {
+	resp, err := c.do("POST", fmt.Sprintf("/v1/workspaces/%s/projects", workspaceID), map[string]string{"name": name})
+	if err != nil {
+		return nil, err
+	}
+	var out Project
+	return &out, c.decode(resp, &out)
+}
+
+// --- API Sources ---
+
+type APISource struct {
+	ID           string `json:"id"`
+	IngestStatus string `json:"ingest_status"`
+}
+
+func (c *Client) UploadSpec(projectID string, data []byte, filename string) (*APISource, error) {
+	return c.UploadSpecRaw(projectID, data, c.baseURL+"/v1/projects/"+projectID+"/api-sources/upload")
+}
+
+// UploadSpecRaw posts to a fully constructed URL (allows ?base_url= query param).
+func (c *Client) UploadSpecRaw(projectID string, data []byte, fullURL string) (*APISource, error) {
+	req, err := http.NewRequest("POST", fullURL, bytes.NewReader(data))
+	if err != nil {
+		return nil, fmt.Errorf("client: upload spec: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+c.token)
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("client: upload spec: %w", err)
+	}
+	var out APISource
+	return &out, c.decode(resp, &out)
+}
+
+func (c *Client) GetSources(projectID string) ([]APISource, error) {
+	resp, err := c.do("GET", "/v1/projects/"+projectID+"/api-sources", nil)
+	if err != nil {
+		return nil, err
+	}
+	var out struct {
+		APISources []APISource `json:"api_sources"`
+	}
+	return out.APISources, c.decode(resp, &out)
+}
+
+// --- Deployments ---
+
+type Deployment struct {
+	ID        string `json:"id"`
+	ProjectID string `json:"project_id"`
+	Status    string `json:"status"`
+	CreatedAt string `json:"created_at"`
+}
+
+func (c *Client) ListDeployments(projectID string) ([]Deployment, error) {
+	resp, err := c.do("GET", fmt.Sprintf("/v1/projects/%s/deployments", projectID), nil)
+	if err != nil {
+		return nil, err
+	}
+	var out struct {
+		Deployments []Deployment `json:"deployments"`
+	}
+	return out.Deployments, c.decode(resp, &out)
+}
+
+type PublishResult struct {
+	Deployment      Deployment `json:"deployment"`
+	MCPURL          string     `json:"mcp_url"`
+	DeploymentToken string     `json:"deployment_token"` // static bearer token, shown once
+	WorkspacePlan   string     `json:"workspace_plan"`   // "free" | "pro" | "business"
+}
+
+func (c *Client) Publish(projectID, slug string) (*PublishResult, error) {
+	resp, err := c.do("POST", fmt.Sprintf("/v1/projects/%s/deployments/publish", projectID),
+		map[string]string{"slug": slug})
+	if err != nil {
+		return nil, err
+	}
+	var out PublishResult
+	return &out, c.decode(resp, &out)
+}
+
+func (c *Client) ActivateDeployment(projectID, deploymentID string) (*PublishResult, error) {
+	resp, err := c.do("POST", fmt.Sprintf("/v1/projects/%s/deployments/%s/activate", projectID, deploymentID), nil)
+	if err != nil {
+		return nil, err
+	}
+	var out PublishResult
+	return &out, c.decode(resp, &out)
+}
+
+// --- Billing ---
+
+type CheckoutResult struct {
+	URL     string `json:"url"`
+	Plan    string `json:"plan"`
+	Current string `json:"current_plan"`
+	IsNoOp  bool   `json:"is_no_op"`
+	IsFree  bool   `json:"is_free_downgrade"`
+}
+
+func (c *Client) CreateCheckout(workspaceID, plan string) (*CheckoutResult, error) {
+	resp, err := c.do("POST", fmt.Sprintf("/v1/workspaces/%s/billing/checkout", workspaceID),
+		map[string]string{"plan": plan})
+	if err != nil {
+		return nil, err
+	}
+	var out CheckoutResult
+	return &out, c.decode(resp, &out)
+}
+
+func (c *Client) GetWorkspace(id string) (*Workspace, error) {
+	resp, err := c.do("GET", fmt.Sprintf("/v1/workspaces/%s", id), nil)
+	if err != nil {
+		return nil, err
+	}
+	var out Workspace
+	return &out, c.decode(resp, &out)
+}
+
+func (c *Client) ListPlans() ([]PlanEntitlements, error) {
+	resp, err := c.do("GET", "/v1/plans", nil)
+	if err != nil {
+		return nil, err
+	}
+	var out struct {
+		Plans []PlanEntitlements `json:"plans"`
+	}
+	return out.Plans, c.decode(resp, &out)
+}
+
+// --- Usage ---
+
+type WorkspaceUsage struct {
+	WorkspaceID  string              `json:"workspace_id"`
+	Plan         string              `json:"plan"`
+	PlanLimit    int64               `json:"plan_limit"`
+	TotalCount   int64               `json:"total_count"`
+	PeriodStart  string              `json:"period_start"`
+	PeriodEnd    string              `json:"period_end"`
+	Entitlements PlanEntitlements    `json:"entitlements"`
+	ByProject    []ProjectUsageBrief `json:"by_project"`
+}
+
+type ProjectUsageBrief struct {
+	ProjectID string `json:"project_id"`
+	Count     int64  `json:"count"`
+}
+
+type ProjectUsage struct {
+	ProjectID    string           `json:"project_id"`
+	Plan         string           `json:"plan"`
+	PlanLimit    int64            `json:"plan_limit"`
+	Count        int64            `json:"count"`
+	PeriodStart  string           `json:"period_start"`
+	PeriodEnd    string           `json:"period_end"`
+	Entitlements PlanEntitlements `json:"entitlements"`
+}
+
+func (c *Client) GetWorkspaceUsage(workspaceID string) (*WorkspaceUsage, error) {
+	resp, err := c.do("GET", fmt.Sprintf("/v1/workspaces/%s/usage", workspaceID), nil)
+	if err != nil {
+		return nil, err
+	}
+	var out WorkspaceUsage
+	return &out, c.decode(resp, &out)
+}
+
+func (c *Client) GetProjectUsage(projectID string) (*ProjectUsage, error) {
+	resp, err := c.do("GET", fmt.Sprintf("/v1/projects/%s/usage", projectID), nil)
+	if err != nil {
+		return nil, err
+	}
+	var out ProjectUsage
+	return &out, c.decode(resp, &out)
+}
+
+// --- Logs ---
+
+type RequestLog struct {
+	ID           string  `json:"id"`
+	WorkspaceID  string  `json:"workspace_id"`
+	DeploymentID string  `json:"deployment_id"`
+	ToolName     *string `json:"tool_name"`
+	StatusCode   *int    `json:"status_code"`
+	LatencyMs    *int    `json:"latency_ms"`
+	CreatedAt    string  `json:"created_at"`
+}
+
+type ListLogsResult struct {
+	Logs       []RequestLog `json:"logs"`
+	NextCursor string       `json:"next_cursor"`
+}
+
+func (c *Client) ListLogs(projectID string, limit int, cursor string) (*ListLogsResult, error) {
+	path := fmt.Sprintf("/v1/projects/%s/logs?limit=%d", projectID, limit)
+	if cursor != "" {
+		path += "&cursor=" + url.QueryEscape(cursor)
+	}
+	resp, err := c.do("GET", path, nil)
+	if err != nil {
+		return nil, err
+	}
+	var out ListLogsResult
+	return &out, c.decode(resp, &out)
+}
+
+// --- Auth Connections ---
+
+type AuthConnection struct {
+	ID        string          `json:"id"`
+	Name      string          `json:"name"`
+	AuthKind  string          `json:"auth_kind"`
+	Config    json.RawMessage `json:"config,omitempty"`
+	CreatedAt string          `json:"created_at"`
+}
+
+type CreateAuthConnectionInput struct {
+	Name       string `json:"name"`
+	Kind       string `json:"kind"`
+	InjectIn   string `json:"inject_in"`
+	InjectName string `json:"inject_name"`
+	Secret     string `json:"secret"`
+}
+
+func (c *Client) ListAuthConnections(projectID string) ([]AuthConnection, error) {
+	resp, err := c.do("GET", fmt.Sprintf("/v1/projects/%s/auth-connections", projectID), nil)
+	if err != nil {
+		return nil, err
+	}
+	var out struct {
+		AuthConnections []AuthConnection `json:"auth_connections"`
+	}
+	return out.AuthConnections, c.decode(resp, &out)
+}
+
+func (c *Client) CreateAuthConnection(projectID string, input CreateAuthConnectionInput) (*AuthConnection, error) {
+	resp, err := c.do("POST", fmt.Sprintf("/v1/projects/%s/auth-connections", projectID), input)
+	if err != nil {
+		return nil, err
+	}
+	var out AuthConnection
+	return &out, c.decode(resp, &out)
+}
+
+func (c *Client) DeleteAuthConnection(projectID, id string) error {
+	resp, err := c.do("DELETE", fmt.Sprintf("/v1/projects/%s/auth-connections/%s", projectID, id), nil)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 400 {
+		b, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("api error %d: %s", resp.StatusCode, string(b))
+	}
+	return nil
+}
+
+// --- MCP Client (direct calls to a live MCP endpoint) ---
+
+// MCPClient calls a live MCP server endpoint using JSON-RPC.
+type MCPClient struct {
+	endpoint   string
+	token      string
+	httpClient *http.Client
+}
+
+func NewMCPClient(endpoint, token string) *MCPClient {
+	return &MCPClient{
+		endpoint: endpoint,
+		token:    token,
+		httpClient: &http.Client{
+			Timeout: 15 * time.Second,
+			CheckRedirect: func(req *http.Request, via []*http.Request) error {
+				req.Header.Del("Authorization")
+				if len(via) > 3 {
+					return fmt.Errorf("too many redirects")
+				}
+				return nil
+			},
+		},
+	}
+}
+
+type mcpRPCRequest struct {
+	JSONRPC string `json:"jsonrpc"`
+	ID      int    `json:"id"`
+	Method  string `json:"method"`
+}
+
+type mcpRPCResponse struct {
+	JSONRPC string          `json:"jsonrpc"`
+	ID      int             `json:"id"`
+	Result  json.RawMessage `json:"result"`
+	Error   *struct {
+		Code    int    `json:"code"`
+		Message string `json:"message"`
+	} `json:"error"`
+}
+
+type MCPTool struct {
+	Name        string
+	Description string
+	Parameters  []MCPToolParam
+}
+
+type MCPToolParam struct {
+	Name     string
+	Type     string
+	Required bool
+}
+
+type MCPServerInfo struct {
+	Name            string
+	Version         string
+	ProtocolVersion string
+}
+
+func (mc *MCPClient) Initialize() (*MCPServerInfo, error) {
+	body, err := json.Marshal(mcpRPCRequest{
+		JSONRPC: "2.0",
+		ID:      1,
+		Method:  "initialize",
+	})
+	if err != nil {
+		return nil, fmt.Errorf("mcp: marshal: %w", err)
+	}
+
+	req, err := http.NewRequest("POST", mc.endpoint, bytes.NewReader(body))
+	if err != nil {
+		return nil, fmt.Errorf("mcp: request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	if mc.token != "" {
+		req.Header.Set("Authorization", "Bearer "+mc.token)
+	}
+
+	resp, err := mc.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("mcp: request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 400 {
+		b, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("mcp error %d: %s", resp.StatusCode, string(b))
+	}
+
+	var rpcResp mcpRPCResponse
+	if err := json.NewDecoder(resp.Body).Decode(&rpcResp); err != nil {
+		return nil, fmt.Errorf("mcp: decode: %w", err)
+	}
+	if rpcResp.Error != nil {
+		return nil, fmt.Errorf("mcp error %d: %s", rpcResp.Error.Code, rpcResp.Error.Message)
+	}
+
+	var result struct {
+		ProtocolVersion string `json:"protocolVersion"`
+		ServerInfo      struct {
+			Name    string `json:"name"`
+			Version string `json:"version"`
+		} `json:"serverInfo"`
+	}
+	if err := json.Unmarshal(rpcResp.Result, &result); err != nil {
+		return nil, fmt.Errorf("mcp: parse init: %w", err)
+	}
+
+	return &MCPServerInfo{
+		Name:            result.ServerInfo.Name,
+		Version:         result.ServerInfo.Version,
+		ProtocolVersion: result.ProtocolVersion,
+	}, nil
+}
+
+func (mc *MCPClient) ListTools() ([]MCPTool, error) {
+	body, err := json.Marshal(mcpRPCRequest{
+		JSONRPC: "2.0",
+		ID:      1,
+		Method:  "tools/list",
+	})
+	if err != nil {
+		return nil, fmt.Errorf("mcp: marshal: %w", err)
+	}
+
+	req, err := http.NewRequest("POST", mc.endpoint, bytes.NewReader(body))
+	if err != nil {
+		return nil, fmt.Errorf("mcp: request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	if mc.token != "" {
+		req.Header.Set("Authorization", "Bearer "+mc.token)
+	}
+
+	resp, err := mc.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("mcp: request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusUnauthorized {
+		return nil, fmt.Errorf("unauthorized — provide a valid --token")
+	}
+	if resp.StatusCode >= 400 {
+		b, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("mcp error %d: %s", resp.StatusCode, string(b))
+	}
+
+	var rpcResp mcpRPCResponse
+	if err := json.NewDecoder(resp.Body).Decode(&rpcResp); err != nil {
+		return nil, fmt.Errorf("mcp: decode response: %w", err)
+	}
+	if rpcResp.Error != nil {
+		return nil, fmt.Errorf("mcp error %d: %s", rpcResp.Error.Code, rpcResp.Error.Message)
+	}
+
+	// Parse the tools/list result.
+	var result struct {
+		Tools []struct {
+			Name        string `json:"name"`
+			Description string `json:"description"`
+			InputSchema struct {
+				Properties map[string]struct {
+					Type string `json:"type"`
+				} `json:"properties"`
+				Required []string `json:"required"`
+			} `json:"inputSchema"`
+		} `json:"tools"`
+	}
+	if err := json.Unmarshal(rpcResp.Result, &result); err != nil {
+		return nil, fmt.Errorf("mcp: parse tools: %w", err)
+	}
+
+	tools := make([]MCPTool, 0, len(result.Tools))
+	for _, t := range result.Tools {
+		requiredSet := make(map[string]bool, len(t.InputSchema.Required))
+		for _, r := range t.InputSchema.Required {
+			requiredSet[r] = true
+		}
+		params := make([]MCPToolParam, 0, len(t.InputSchema.Properties))
+		for name, prop := range t.InputSchema.Properties {
+			params = append(params, MCPToolParam{
+				Name:     name,
+				Type:     prop.Type,
+				Required: requiredSet[name],
+			})
+		}
+		tools = append(tools, MCPTool{
+			Name:        t.Name,
+			Description: t.Description,
+			Parameters:  params,
+		})
+	}
+	return tools, nil
+}
