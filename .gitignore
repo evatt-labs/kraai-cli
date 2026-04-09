@@ -2,3 +2,6 @@ kraai
 kraai.exe
 dist/
 !cmd/
+
+# Wrangler local cache (contains account IDs)
+worker/.wrangler/
