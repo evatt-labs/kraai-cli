@@ -56,11 +56,32 @@ func (c *Client) do(method, path string, body any) (*http.Response, error) {
 	return c.httpClient.Do(req)
 }
 
+// apiError extracts a human-friendly error message from an API error response.
+func apiError(statusCode int, body []byte) error {
+	var apiErr struct {
+		Code    string `json:"code"`
+		Message string `json:"message"`
+	}
+	if json.Unmarshal(body, &apiErr) == nil && apiErr.Message != "" {
+		return fmt.Errorf("%d %s", statusCode, apiErr.Message)
+	}
+	return fmt.Errorf("api error %d: %s", statusCode, string(body))
+}
+
+// checkStatus reads the response body and returns an error if status >= 400.
+func checkStatus(resp *http.Response) error {
+	if resp.StatusCode >= 400 {
+		b, _ := io.ReadAll(resp.Body)
+		return apiError(resp.StatusCode, b)
+	}
+	return nil
+}
+
 func (c *Client) decode(resp *http.Response, v any) error {
 	defer resp.Body.Close()
 	if resp.StatusCode >= 400 {
 		b, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("api error %d: %s", resp.StatusCode, string(b))
+		return apiError(resp.StatusCode, b)
 	}
 	return json.NewDecoder(resp.Body).Decode(v)
 }
@@ -188,11 +209,7 @@ func (c *Client) RevokeToken(workspaceID, tokenID string) error {
 		return err
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode >= 400 {
-		b, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("api error %d: %s", resp.StatusCode, string(b))
-	}
-	return nil
+	return checkStatus(resp)
 }
 
 // --- Workspaces (create) ---
@@ -294,20 +311,36 @@ func (c *Client) ListDeployments(projectID string) ([]Deployment, error) {
 }
 
 type PublishResult struct {
-	Deployment      Deployment `json:"deployment"`
-	MCPURL          string     `json:"mcp_url"`
-	DeploymentToken string     `json:"deployment_token"` // static bearer token, shown once
-	WorkspacePlan   string     `json:"workspace_plan"`   // "free" | "pro" | "business"
+	Deployment      Deployment       `json:"deployment"`
+	MCPURL          string           `json:"mcp_url"`
+	DeploymentToken string           `json:"deployment_token"`
+	WorkspacePlan   string           `json:"workspace_plan"`
+	Entitlements    PlanEntitlements `json:"entitlements"`
 }
 
-func (c *Client) Publish(projectID, slug string) (*PublishResult, error) {
-	resp, err := c.do("POST", fmt.Sprintf("/v1/projects/%s/deployments/publish", projectID),
-		map[string]string{"slug": slug})
+func (c *Client) Publish(projectID, slug, authConnectionID string) (*PublishResult, error) {
+	body := map[string]string{"slug": slug}
+	if authConnectionID != "" {
+		body["auth_connection_id"] = authConnectionID
+	}
+	resp, err := c.do("POST", fmt.Sprintf("/v1/projects/%s/deployments/publish", projectID), body)
 	if err != nil {
 		return nil, err
 	}
 	var out PublishResult
 	return &out, c.decode(resp, &out)
+}
+
+// CheckSlugAvailability checks if a slug is available for a project.
+func (c *Client) CheckSlugAvailability(projectID, slug string) (bool, error) {
+	resp, err := c.do("GET", fmt.Sprintf("/v1/projects/%s/slug-availability?slug=%s", projectID, url.QueryEscape(slug)), nil)
+	if err != nil {
+		return false, err
+	}
+	var out struct {
+		Available bool `json:"available"`
+	}
+	return out.Available, c.decode(resp, &out)
 }
 
 func (c *Client) ActivateDeployment(projectID, deploymentID string) (*PublishResult, error) {
@@ -479,11 +512,261 @@ func (c *Client) DeleteAuthConnection(projectID, id string) error {
 		return err
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode >= 400 {
-		b, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("api error %d: %s", resp.StatusCode, string(b))
+	return checkStatus(resp)
+}
+
+// --- Fetch Spec from URL ---
+
+func (c *Client) FetchSpec(projectID, specURL string) (*APISource, error) {
+	resp, err := c.do("POST", fmt.Sprintf("/v1/projects/%s/api-sources/fetch", projectID),
+		map[string]string{"url": specURL})
+	if err != nil {
+		return nil, err
 	}
-	return nil
+	var out APISource
+	return &out, c.decode(resp, &out)
+}
+
+// --- Workspace/Project Management ---
+
+func (c *Client) RenameWorkspace(workspaceID, name string) error {
+	resp, err := c.do("PATCH", fmt.Sprintf("/v1/workspaces/%s", workspaceID), map[string]string{"name": name})
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	return checkStatus(resp)
+}
+
+func (c *Client) DeleteWorkspace(workspaceID string) error {
+	resp, err := c.do("DELETE", fmt.Sprintf("/v1/workspaces/%s", workspaceID), nil)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	return checkStatus(resp)
+}
+
+func (c *Client) RenameProject(projectID, name string) error {
+	resp, err := c.do("PATCH", fmt.Sprintf("/v1/projects/%s", projectID), map[string]string{"name": name})
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	return checkStatus(resp)
+}
+
+func (c *Client) DeleteProject(projectID string) error {
+	resp, err := c.do("DELETE", fmt.Sprintf("/v1/projects/%s", projectID), nil)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	return checkStatus(resp)
+}
+
+// --- Workflows ---
+
+type WorkflowDefinition struct {
+	ID          string          `json:"id"`
+	Name        string          `json:"name"`
+	Description string          `json:"description"`
+	Definition  json.RawMessage `json:"definition"`
+	CreatedAt   string          `json:"created_at"`
+}
+
+type WorkflowRun struct {
+	ID            string  `json:"id"`
+	DefinitionID  string  `json:"definition_id"`
+	Status        string  `json:"status"`
+	FailureReason *string `json:"failure_reason,omitempty"`
+	StartedAt     *string `json:"started_at,omitempty"`
+	CompletedAt   *string `json:"completed_at,omitempty"`
+	CreatedAt     string  `json:"created_at"`
+}
+
+type WorkflowStep struct {
+	ID        string  `json:"id"`
+	StepKey   string  `json:"step_key"`
+	StepKind  string  `json:"step_kind"`
+	State     string  `json:"state"`
+	Attempt   int     `json:"attempt"`
+	CreatedAt string  `json:"created_at"`
+}
+
+func (c *Client) ListWorkflowDefinitions(projectID string) ([]WorkflowDefinition, error) {
+	resp, err := c.do("GET", fmt.Sprintf("/v1/projects/%s/workflow-definitions", projectID), nil)
+	if err != nil {
+		return nil, err
+	}
+	var out struct {
+		Definitions []WorkflowDefinition `json:"definitions"`
+	}
+	return out.Definitions, c.decode(resp, &out)
+}
+
+func (c *Client) CreateWorkflowDefinition(projectID, name, description string, definition json.RawMessage) (*WorkflowDefinition, error) {
+	resp, err := c.do("POST", fmt.Sprintf("/v1/projects/%s/workflow-definitions", projectID), map[string]any{
+		"name":        name,
+		"description": description,
+		"definition":  definition,
+	})
+	if err != nil {
+		return nil, err
+	}
+	var out WorkflowDefinition
+	return &out, c.decode(resp, &out)
+}
+
+func (c *Client) DeleteWorkflowDefinition(projectID, definitionID string) error {
+	resp, err := c.do("DELETE", fmt.Sprintf("/v1/projects/%s/workflow-definitions/%s", projectID, definitionID), nil)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	return checkStatus(resp)
+}
+
+func (c *Client) TriggerWorkflowRun(projectID, definitionID string) (*WorkflowRun, error) {
+	resp, err := c.do("POST", fmt.Sprintf("/v1/projects/%s/workflow-definitions/%s/runs", projectID, definitionID), nil)
+	if err != nil {
+		return nil, err
+	}
+	var out WorkflowRun
+	return &out, c.decode(resp, &out)
+}
+
+func (c *Client) ListWorkflowRuns(projectID, definitionID string) ([]WorkflowRun, error) {
+	resp, err := c.do("GET", fmt.Sprintf("/v1/projects/%s/workflow-definitions/%s/runs", projectID, definitionID), nil)
+	if err != nil {
+		return nil, err
+	}
+	var out struct {
+		Runs []WorkflowRun `json:"runs"`
+	}
+	return out.Runs, c.decode(resp, &out)
+}
+
+func (c *Client) GetWorkflowRun(runID string) (*WorkflowRun, error) {
+	resp, err := c.do("GET", fmt.Sprintf("/v1/workflow-runs/%s", runID), nil)
+	if err != nil {
+		return nil, err
+	}
+	var out WorkflowRun
+	return &out, c.decode(resp, &out)
+}
+
+func (c *Client) GetWorkflowRunSteps(runID string) ([]WorkflowStep, error) {
+	resp, err := c.do("GET", fmt.Sprintf("/v1/workflow-runs/%s/steps", runID), nil)
+	if err != nil {
+		return nil, err
+	}
+	var out struct {
+		Steps []WorkflowStep `json:"steps"`
+	}
+	return out.Steps, c.decode(resp, &out)
+}
+
+func (c *Client) CancelWorkflowRun(runID string) error {
+	resp, err := c.do("POST", fmt.Sprintf("/v1/workflow-runs/%s/cancel", runID), nil)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	return checkStatus(resp)
+}
+
+// --- OPA Policies ---
+
+type OPAPolicy struct {
+	ID        string `json:"id"`
+	Name      string `json:"name"`
+	Enabled   bool   `json:"enabled"`
+	CreatedAt string `json:"created_at"`
+}
+
+func (c *Client) ListPolicies(workspaceID string) ([]OPAPolicy, error) {
+	resp, err := c.do("GET", fmt.Sprintf("/v1/workspaces/%s/policies", workspaceID), nil)
+	if err != nil {
+		return nil, err
+	}
+	var out struct {
+		Policies []OPAPolicy `json:"policies"`
+	}
+	return out.Policies, c.decode(resp, &out)
+}
+
+func (c *Client) CreatePolicy(workspaceID, name, regoSource string) (*OPAPolicy, error) {
+	resp, err := c.do("POST", fmt.Sprintf("/v1/workspaces/%s/policies", workspaceID), map[string]string{
+		"name":        name,
+		"rego_source": regoSource,
+	})
+	if err != nil {
+		return nil, err
+	}
+	var out OPAPolicy
+	return &out, c.decode(resp, &out)
+}
+
+func (c *Client) DeletePolicy(workspaceID, policyID string) error {
+	resp, err := c.do("DELETE", fmt.Sprintf("/v1/workspaces/%s/policies/%s", workspaceID, policyID), nil)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	return checkStatus(resp)
+}
+
+// --- Approvals ---
+
+type ApprovalRequest struct {
+	ID          string  `json:"id"`
+	Status      string  `json:"status"`
+	Action      string  `json:"action"`
+	ResourceID  string  `json:"resource_id"`
+	RequestedBy string  `json:"requested_by"`
+	ReviewedBy  *string `json:"reviewed_by,omitempty"`
+	CreatedAt   string  `json:"created_at"`
+}
+
+func (c *Client) ListApprovals(workspaceID string) ([]ApprovalRequest, error) {
+	resp, err := c.do("GET", fmt.Sprintf("/v1/workspaces/%s/approvals", workspaceID), nil)
+	if err != nil {
+		return nil, err
+	}
+	var out struct {
+		Approvals []ApprovalRequest `json:"approvals"`
+	}
+	return out.Approvals, c.decode(resp, &out)
+}
+
+func (c *Client) ListPendingApprovals(workspaceID string) ([]ApprovalRequest, error) {
+	resp, err := c.do("GET", fmt.Sprintf("/v1/workspaces/%s/approvals/pending", workspaceID), nil)
+	if err != nil {
+		return nil, err
+	}
+	var out struct {
+		Approvals []ApprovalRequest `json:"approvals"`
+	}
+	return out.Approvals, c.decode(resp, &out)
+}
+
+func (c *Client) ApproveRequest(workspaceID, approvalID string) error {
+	resp, err := c.do("POST", fmt.Sprintf("/v1/workspaces/%s/approvals/%s/approve", workspaceID, approvalID), nil)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	return checkStatus(resp)
+}
+
+func (c *Client) DenyRequest(workspaceID, approvalID string) error {
+	resp, err := c.do("POST", fmt.Sprintf("/v1/workspaces/%s/approvals/%s/deny", workspaceID, approvalID), nil)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	return checkStatus(resp)
 }
 
 // --- MCP Client (direct calls to a live MCP endpoint) ---

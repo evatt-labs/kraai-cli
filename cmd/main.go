@@ -80,6 +80,12 @@ func main() {
 		err = runLogs(rest)
 	case "auth-connections":
 		err = runAuthConnections(rest)
+	case "workflows":
+		err = runWorkflows(rest)
+	case "policies":
+		err = runPolicies(rest)
+	case "approvals":
+		err = runApprovals(rest)
 	case "version", "--version", "-v":
 		fmt.Printf("kraai version %s\n", version)
 	case "help", "--help", "-h":
@@ -102,24 +108,27 @@ Usage:
   kraai <command> [flags]
 
 Commands:
-  login          Authenticate via browser (Device Authorization Grant)
-  logout         Revoke the active CLI token
-  whoami         Print the currently authenticated user and workspace
-  workspaces     List, create, or switch workspaces
-  projects       List or create projects
-  plans          View or change workspace billing plan
-  validate       Validate an OpenAPI spec file locally
-  deploy         Upload a spec and publish — returns a live MCP URL
-  deploy activate  Switch to a specific deployment version
-  publish        Publish the latest ready source for an existing project
-  deployments    List deployments for a project
-  tools          List MCP tools exposed by a deployed server
-  tokens         Manage workspace API tokens
-  usage          View request counts and quota usage
-  logs           View recent MCP request logs
-  status         Check deployment health and info
-  auth-connections  Manage upstream API credentials
-  version        Print version
+  login              Authenticate via browser (Device Authorization Grant)
+  logout             Revoke the active CLI token
+  whoami             Print the currently authenticated user and workspace
+  workspaces         List, create, rename, delete, or switch workspaces
+  projects           List, create, rename, or delete projects
+  plans              View or change workspace billing plan
+  validate           Validate an OpenAPI spec file locally
+  deploy             Upload (or fetch from URL) a spec and publish
+  deploy activate    Switch to a specific deployment version
+  publish            Publish the latest ready source for an existing project
+  deployments        List deployments for a project
+  tools              List MCP tools exposed by a deployed server
+  tokens             Manage workspace API tokens
+  usage              View request counts and quota usage
+  logs               View recent MCP request logs
+  status             Check deployment health and info
+  auth-connections   Manage upstream API credentials
+  workflows          Manage workflow definitions and runs
+  policies           Manage OPA policies
+  approvals          List, approve, or deny approval requests
+  version            Print version
 
 Flags:
   --local        Target http://api.lvh.me (local development stack)

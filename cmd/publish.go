@@ -13,6 +13,7 @@ func runPublish(args []string) error {
 	projectID := fs.String("project", "", "Target project ID (required if workspace has multiple projects)")
 	workspaceID := fs.String("workspace", "", "Override active workspace")
 	slug := fs.String("slug", "", "Route slug for the MCP URL (required)")
+	authConn := fs.String("auth-connection", "", "Attach an auth connection ID")
 	fs.SetOutput(os.Stderr)
 	if err := fs.Parse(args); err != nil {
 		return err
@@ -56,8 +57,14 @@ func runPublish(args []string) error {
 		}
 	}
 
+	// Pre-check slug availability.
+	available, slugErr := c.CheckSlugAvailability(pid, *slug)
+	if slugErr == nil && !available {
+		return fmt.Errorf("publish: slug %q is already taken", *slug)
+	}
+
 	fmt.Printf("Publishing project %s...\n", pid)
-	result, err := c.Publish(pid, *slug)
+	result, err := c.Publish(pid, *slug, *authConn)
 	if err != nil {
 		return fmt.Errorf("publish: %w", err)
 	}

@@ -29,8 +29,18 @@ func runProjects(args []string) error {
 			name = fs.Arg(1)
 		}
 		return createProject(name)
+	case "rename":
+		if fs.NArg() < 3 {
+			return fmt.Errorf("usage: kraai projects rename <project-id> <new-name>")
+		}
+		return renameProject(fs.Arg(1), fs.Arg(2))
+	case "delete":
+		if fs.NArg() < 2 {
+			return fmt.Errorf("usage: kraai projects delete <project-id>")
+		}
+		return deleteProject(fs.Arg(1))
 	default:
-		return fmt.Errorf("unknown subcommand: %s\n\nUsage:\n  kraai projects [list]        List projects in active workspace\n  kraai projects new [name]    Create a project", sub)
+		return fmt.Errorf("unknown subcommand: %s\n\nUsage:\n  kraai projects [list]                  List projects in active workspace\n  kraai projects new [name]              Create a project\n  kraai projects rename <id> <name>      Rename a project\n  kraai projects delete <id>             Delete a project", sub)
 	}
 }
 
@@ -77,5 +87,31 @@ func createProject(name string) error {
 	}
 
 	fmt.Printf("Created project: %s (%s)\n", proj.Name, proj.ID)
+	return nil
+}
+
+func renameProject(id, name string) error {
+	creds, err := requireCreds()
+	if err != nil {
+		return err
+	}
+	c := client.New(apiBaseURL, creds.Token)
+	if err := c.RenameProject(id, name); err != nil {
+		return fmt.Errorf("projects rename: %w", err)
+	}
+	fmt.Printf("Renamed project %s to %q\n", id, name)
+	return nil
+}
+
+func deleteProject(id string) error {
+	creds, err := requireCreds()
+	if err != nil {
+		return err
+	}
+	c := client.New(apiBaseURL, creds.Token)
+	if err := c.DeleteProject(id); err != nil {
+		return fmt.Errorf("projects delete: %w", err)
+	}
+	fmt.Printf("Deleted project %s\n", id)
 	return nil
 }

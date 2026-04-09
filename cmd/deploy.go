@@ -40,34 +40,56 @@ func runDeploy(args []string) error {
 	wsID := fs.String("workspace", "", "Workspace ID (default: active workspace)")
 	projID := fs.String("project-id", "", "Deploy to an existing project (skip project creation)")
 	baseURL := fs.String("base-url", "", "Override upstream base URL from spec")
+	fromURL := fs.String("from-url", "", "Fetch spec from this HTTPS URL instead of a local file")
+	authConn := fs.String("auth-connection", "", "Attach an auth connection ID at publish time")
 	fs.SetOutput(os.Stderr)
 	if err := fs.Parse(flagArgs); err != nil {
 		return err
 	}
 
-	if len(posArgs) < 1 {
-		return fmt.Errorf("usage: kraai deploy [flags] <spec-file>")
+	if *fromURL == "" && len(posArgs) < 1 {
+		return fmt.Errorf("usage: kraai deploy [flags] <spec-file>\n       kraai deploy --from-url <https://...> [flags]")
 	}
-	specFile := posArgs[0]
+	specFile := ""
+	if len(posArgs) > 0 {
+		specFile = posArgs[0]
+	}
 
 	creds, err := requireCreds()
 	if err != nil {
 		return err
 	}
 
-	// Read spec file
-	data, err := os.ReadFile(specFile)
-	if err != nil {
-		return fmt.Errorf("deploy: read spec: %w", err)
-	}
-
-	// Parse spec title for defaults
-	specTitle := specTitleFromJSON(data, specFile)
-	if *slug == "" {
-		*slug = toSlug(specTitle)
+	var data []byte
+	var specTitle string
+	if *fromURL != "" {
+		specTitle = "server"
+		if *slug == "" {
+			// Derive slug from URL path
+			parts := strings.Split(strings.TrimRight(*fromURL, "/"), "/")
+			base := parts[len(parts)-1]
+			if i := strings.LastIndexByte(base, '.'); i > 0 {
+				base = base[:i]
+			}
+			*slug = toSlug(base)
+		}
+	} else {
+		var readErr error
+		data, readErr = os.ReadFile(specFile)
+		if readErr != nil {
+			return fmt.Errorf("deploy: read spec: %w", readErr)
+		}
+		specTitle = specTitleFromJSON(data, specFile)
+		if *slug == "" {
+			*slug = toSlug(specTitle)
+		}
 	}
 	if *name == "" {
-		*name = specTitle
+		if specTitle != "" {
+			*name = specTitle
+		} else {
+			*name = "server"
+		}
 	}
 
 	c := client.New(apiBaseURL, creds.Token)
@@ -108,19 +130,31 @@ func runDeploy(args []string) error {
 		fmt.Printf(" done\n")
 	}
 
-	// Upload spec
-	fmt.Printf("Uploading spec...")
-	uploadURL := apiBaseURL + "/v1/projects/" + projectID + "/api-sources/upload"
-	if *baseURL != "" {
-		params := url.Values{}
-		params.Set("base_url", *baseURL)
-		uploadURL += "?" + params.Encode()
+	// Upload or fetch spec
+	var src *client.APISource
+	if *fromURL != "" {
+		fmt.Printf("Fetching spec from URL...")
+		var fetchErr error
+		src, fetchErr = c.FetchSpec(projectID, *fromURL)
+		if fetchErr != nil {
+			return fmt.Errorf("deploy: fetch spec: %w", fetchErr)
+		}
+		fmt.Printf(" done (source: %s)\n", src.ID)
+	} else {
+		fmt.Printf("Uploading spec...")
+		uploadURL := apiBaseURL + "/v1/projects/" + projectID + "/api-sources/upload"
+		if *baseURL != "" {
+			params := url.Values{}
+			params.Set("base_url", *baseURL)
+			uploadURL += "?" + params.Encode()
+		}
+		var uploadErr error
+		src, uploadErr = c.UploadSpecRaw(projectID, data, uploadURL)
+		if uploadErr != nil {
+			return fmt.Errorf("deploy: upload spec: %w", uploadErr)
+		}
+		fmt.Printf(" done (source: %s)\n", src.ID)
 	}
-	src, err := c.UploadSpecRaw(projectID, data, uploadURL)
-	if err != nil {
-		return fmt.Errorf("deploy: upload spec: %w", err)
-	}
-	fmt.Printf(" done (source: %s)\n", src.ID)
 
 	// Poll until worker finishes parsing (up to 2 minutes)
 	fmt.Printf("Processing spec")
@@ -147,9 +181,15 @@ func runDeploy(args []string) error {
 		return fmt.Errorf("deploy: timed out waiting for spec processing")
 	}
 
+	// Check slug availability
+	available, slugErr := c.CheckSlugAvailability(projectID, *slug)
+	if slugErr == nil && !available {
+		return fmt.Errorf("deploy: slug %q is already taken — use --slug to choose another", *slug)
+	}
+
 	// Publish
 	fmt.Printf("Publishing as %q...", *slug)
-	result, err := c.Publish(projectID, *slug)
+	result, err := c.Publish(projectID, *slug, *authConn)
 	if err != nil {
 		return fmt.Errorf("deploy: publish: %w", err)
 	}
