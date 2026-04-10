@@ -67,7 +67,21 @@ func runLogin(args []string) error {
 			if err := config.Save(creds); err != nil {
 				return fmt.Errorf("login: save credentials: %w", err)
 			}
-			fmt.Printf("✓ Logged in as %s (%s workspace)\n", res.Email, res.WorkspaceName)
+			fmt.Printf("✓ Logged in as %s\n\n", res.Email)
+			fmt.Printf("  Workspace:  %s\n", res.WorkspaceName)
+			fmt.Printf("  ID:         %s\n", res.WorkspaceID)
+
+			authed := client.New(apiBaseURL, res.Token)
+			projects, err := authed.ListProjects(res.WorkspaceID)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "  warning: could not fetch projects: %v\n", err)
+			} else if len(projects) > 0 {
+				fmt.Printf("\n  Projects:\n")
+				for _, p := range projects {
+					fmt.Printf("    %-30s %s\n", p.Name, p.ID)
+				}
+			}
+			fmt.Println()
 			return nil
 		case "authorization_pending":
 			// Keep polling
