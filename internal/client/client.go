@@ -133,11 +133,13 @@ func (c *Client) PollDeviceToken(deviceCode string) (*DeviceTokenResponse, error
 // --- Workspaces ---
 
 type Workspace struct {
-	ID           string           `json:"id"`
-	Name         string           `json:"name"`
-	BillingPlan  string           `json:"billing_plan"`
-	OwnerID      string           `json:"owner_id"`
-	Entitlements PlanEntitlements `json:"entitlements"`
+	ID                      string           `json:"id"`
+	Name                    string           `json:"name"`
+	BillingPlan             string           `json:"billing_plan"`
+	BillingStatus           string           `json:"billing_status"`
+	OwnerID                 string           `json:"owner_id"`
+	CancellationEffectiveAt *time.Time       `json:"cancellation_effective_at,omitempty"`
+	Entitlements            PlanEntitlements `json:"entitlements"`
 }
 
 type PlanEntitlements struct {
@@ -354,21 +356,47 @@ func (c *Client) ActivateDeployment(projectID, deploymentID string) (*PublishRes
 
 // --- Billing ---
 
-type CheckoutResult struct {
-	URL     string `json:"url"`
-	Plan    string `json:"plan"`
-	Current string `json:"current_plan"`
-	IsNoOp  bool   `json:"is_no_op"`
-	IsFree  bool   `json:"is_free_downgrade"`
+// SetPlanResult matches the backend's SetPlanResult shape from
+// PUT /v1/workspaces/:id/billing/plan. The backend dispatches internally
+// on the transition type (no-op / free→paid / paid→paid / paid→free) and
+// returns this unified response. Callers dispatch on which optional fields
+// are populated:
+//
+//   - IsNoOp              → already on target plan, nothing happened
+//   - CheckoutURL != ""   → first-time subscribe (free→paid); open in browser
+//   - EffectiveAt != nil  → cancel-at-period-end scheduled (paid→free)
+//   - otherwise           → applied immediately (paid→paid with proration)
+type SetPlanResult struct {
+	Plan        string     `json:"plan"`
+	Status      string     `json:"status"`
+	Previous    string     `json:"previous_plan"`
+	CheckoutURL string     `json:"checkout_url,omitempty"`
+	EffectiveAt *time.Time `json:"effective_at,omitempty"`
+	IsNoOp      bool       `json:"is_no_op"`
 }
 
-func (c *Client) CreateCheckout(workspaceID, plan string) (*CheckoutResult, error) {
-	resp, err := c.do("POST", fmt.Sprintf("/v1/workspaces/%s/billing/checkout", workspaceID),
+// SetPlan is the idempotent "set this workspace to plan X" call. The
+// backend figures out the transition type from current state and dispatches
+// to the appropriate Stripe operation (or none).
+func (c *Client) SetPlan(workspaceID, plan string) (*SetPlanResult, error) {
+	resp, err := c.do("PUT", fmt.Sprintf("/v1/workspaces/%s/billing/plan", workspaceID),
 		map[string]string{"plan": plan})
 	if err != nil {
 		return nil, err
 	}
-	var out CheckoutResult
+	var out SetPlanResult
+	return &out, c.decode(resp, &out)
+}
+
+// ResumeBilling undoes a pending cancellation (billing_status=canceling
+// → active). Only valid when the workspace has been cancelled but the
+// period hasn't ended yet. Returns an error from the API otherwise.
+func (c *Client) ResumeBilling(workspaceID string) (*SetPlanResult, error) {
+	resp, err := c.do("POST", fmt.Sprintf("/v1/workspaces/%s/billing/resume", workspaceID), nil)
+	if err != nil {
+		return nil, err
+	}
+	var out SetPlanResult
 	return &out, c.decode(resp, &out)
 }
 
