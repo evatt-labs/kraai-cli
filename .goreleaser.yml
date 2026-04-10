@@ -34,6 +34,34 @@ archives:
     files:
       - LICENSE
 
+nfpms:
+  - id: kraai
+    package_name: kraai
+    builds:
+      - kraai
+    vendor: Evatt Labs
+    homepage: https://kraai.dev
+    maintainer: Jordan Evatt <jordan@evattlabs.com>
+    description: |-
+      Kraai CLI — manage hosted MCP servers from the terminal.
+      Turn any OpenAPI spec into a hosted MCP server endpoint compatible
+      with Claude, ChatGPT, and other AI agents. Device-auth login,
+      deployment lifecycle, workflows, policies, and billing.
+    license: MIT
+    section: utils
+    priority: optional
+    formats:
+      - deb
+      - rpm
+      - apk
+      - archlinux
+    bindir: /usr/bin
+    contents:
+      - src: LICENSE
+        dst: /usr/share/doc/kraai/LICENSE
+        file_info:
+          mode: 0644
+
 checksum:
   name_template: "kraai_{{ .Version }}_checksums.txt"
   algorithm: sha256
