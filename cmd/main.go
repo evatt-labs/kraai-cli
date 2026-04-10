@@ -7,7 +7,10 @@ import (
 	"strings"
 )
 
-const version = "0.1.0"
+// version is overridden at link time by goreleaser via
+// -ldflags "-X main.version={{.Version}}". Must be var, not const —
+// -X cannot override constants.
+var version = "dev"
 
 var apiBaseURL = "https://api.kraai.dev"
 
