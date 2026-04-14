@@ -30,4 +30,7 @@ jobs:
           version: latest
           args: release --clean
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # GH_RELEASE_TOKEN is a GitHub PAT stored in Forgejo secrets.
+          # Forgejo's auto-injected GITHUB_TOKEN only has access to the Forgejo
+          # repo; GoReleaser needs a real GitHub token to publish to evatt-labs/kraai-cli.
+          GITHUB_TOKEN: ${{ secrets.GH_RELEASE_TOKEN }}

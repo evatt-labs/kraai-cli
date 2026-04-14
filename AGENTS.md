@@ -1,6 +1,3 @@
-<!-- GENERATED FILE. Edit AGENTS.md instead. -->
-<!-- Sync: .agent/scripts/sync-agent-docs.sh -->
-
 # kraai-cli — Kraai CLI Tool
 
 Go CLI for the Kraai platform. Talks to `api.kraai.dev` (or `api.lvh.me` with `--local`).
