@@ -355,6 +355,22 @@ func (c *Client) ActivateDeployment(projectID, deploymentID string) (*PublishRes
 	return &out, c.decode(resp, &out)
 }
 
+// ReissueDeploymentToken revokes existing static deployment tokens and returns
+// a freshly minted one. Used by `kraai deployments reissue-token`.
+func (c *Client) ReissueDeploymentToken(projectID, deploymentID string) (string, error) {
+	resp, err := c.do("POST", fmt.Sprintf("/v1/projects/%s/deployments/%s/reissue-token", projectID, deploymentID), nil)
+	if err != nil {
+		return "", err
+	}
+	var out struct {
+		DeploymentToken string `json:"deployment_token"`
+	}
+	if err := c.decode(resp, &out); err != nil {
+		return "", err
+	}
+	return out.DeploymentToken, nil
+}
+
 func (c *Client) GetWorkspace(id string) (*Workspace, error) {
 	resp, err := c.do("GET", fmt.Sprintf("/v1/workspaces/%s", id), nil)
 	if err != nil {
