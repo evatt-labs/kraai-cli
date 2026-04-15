@@ -4,8 +4,6 @@ import (
 	"flag"
 	"fmt"
 	"os"
-	"os/exec"
-	"runtime"
 
 	"github.com/evatt-labs/kraai-cli/internal/config"
 )
@@ -16,8 +14,7 @@ func runConsole(args []string) error {
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
-
-	return openBrowser(appBaseURL)
+	return openBrowserSafe(appBaseURL)
 }
 
 func runOpen(args []string) error {
@@ -52,24 +49,5 @@ func runOpen(args []string) error {
 	}
 
 	fmt.Printf("Opening %s...\n", targetURL)
-	return openBrowser(targetURL)
-}
-
-func openBrowser(url string) error {
-	var cmd string
-	var args []string
-
-	switch runtime.GOOS {
-	case "windows":
-		cmd = "rundll32"
-		args = []string{"url.dll,FileProtocolHandler", url}
-	case "darwin":
-		cmd = "open"
-		args = []string{url}
-	default: // "linux", "freebsd", etc.
-		cmd = "xdg-open"
-		args = []string{url}
-	}
-
-	return exec.Command(cmd, args...).Start()
+	return openBrowserSafe(targetURL)
 }

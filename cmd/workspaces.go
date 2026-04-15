@@ -40,13 +40,8 @@ func runWorkspaces(args []string) error {
 			return fmt.Errorf("usage: kraai workspaces rename <workspace-id> <new-name>")
 		}
 		return renameWorkspace(fs.Arg(1), fs.Arg(2))
-	case "delete":
-		if fs.NArg() < 2 {
-			return fmt.Errorf("usage: kraai workspaces delete <workspace-id>")
-		}
-		return deleteWorkspace(fs.Arg(1))
 	default:
-		return fmt.Errorf("unknown subcommand: %s\n\nUsage:\n  kraai workspaces [list]              List workspaces\n  kraai workspaces new [name]          Create a workspace\n  kraai workspaces use <id>            Switch active workspace\n  kraai workspaces rename <id> <name>  Rename a workspace\n  kraai workspaces delete <id>         Delete a workspace", sub)
+		return fmt.Errorf("unknown subcommand: %s\n\nUsage:\n  kraai workspaces [list]              List workspaces\n  kraai workspaces new [name]          Create a workspace\n  kraai workspaces use <id>            Switch active workspace\n  kraai workspaces rename <id> <name>  Rename a workspace\n\nWorkspace deletion lives in the web UI at app.kraai.dev — it's irreversible and gated on a confirmation flow.", sub)
 	}
 }
 
@@ -139,19 +134,6 @@ func renameWorkspace(id, name string) error {
 		return fmt.Errorf("workspaces rename: %w", err)
 	}
 	fmt.Printf("Renamed workspace %s to %q\n", id, name)
-	return nil
-}
-
-func deleteWorkspace(id string) error {
-	creds, err := requireCreds()
-	if err != nil {
-		return err
-	}
-	c := client.New(apiBaseURL, creds.Token)
-	if err := c.DeleteWorkspace(id); err != nil {
-		return fmt.Errorf("workspaces delete: %w", err)
-	}
-	fmt.Printf("Deleted workspace %s\n", id)
 	return nil
 }
 
