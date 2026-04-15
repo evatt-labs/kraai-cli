@@ -73,9 +73,6 @@ func main() {
 		err = runWorkspaces(rest)
 	case "servers":
 		err = runServers(rest)
-	case "projects":
-		// Legacy alias — internally delegates to the server model.
-		err = runProjects(rest)
 	case "plans":
 		err = runPlans(rest)
 	case "validate":
