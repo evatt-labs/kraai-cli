@@ -19,29 +19,29 @@ func runConsole(args []string) error {
 
 func runOpen(args []string) error {
 	fs := flag.NewFlagSet("open", flag.ContinueOnError)
-	var projectSlug string
-	fs.StringVar(&projectSlug, "project", "", "Project slug to open")
+	var serverSlug string
+	fs.StringVar(&serverSlug, "server", "", "Server slug to open")
 	fs.SetOutput(os.Stderr)
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
 
-	// If no project specified but there are positional args, treat first as slug
-	if projectSlug == "" && fs.NArg() > 0 {
-		projectSlug = fs.Arg(0)
+	// If no server specified but there are positional args, treat first as slug.
+	if serverSlug == "" && fs.NArg() > 0 {
+		serverSlug = fs.Arg(0)
 	}
 
 	targetURL := appBaseURL
 
-	if projectSlug != "" {
-		targetURL = fmt.Sprintf("%s/projects/%s", appBaseURL, projectSlug)
-		// Check for specific sub-pages as second arg
+	if serverSlug != "" {
+		targetURL = fmt.Sprintf("%s/servers/%s", appBaseURL, serverSlug)
+		// Check for specific sub-pages as second arg.
 		if fs.NArg() > 1 {
 			subPage := fs.Arg(1)
 			targetURL = fmt.Sprintf("%s/%s", targetURL, subPage)
 		}
 	} else {
-		// Try to find the active workspace to deep link to it
+		// Try to find the active workspace to deep link to it.
 		creds, _ := config.Load()
 		if creds != nil && creds.WorkspaceID != "" {
 			targetURL = fmt.Sprintf("%s/workspaces/%s", appBaseURL, creds.WorkspaceID)

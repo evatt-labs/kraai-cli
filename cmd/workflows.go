@@ -11,7 +11,7 @@ import (
 
 func runWorkflows(args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("usage: kraai workflows <subcommand>\n\nSubcommands:\n  list              List workflow definitions for a project\n  create            Create a workflow definition\n  delete            Delete a workflow definition\n  trigger           Trigger a workflow run\n  runs              List runs for a workflow definition\n  status            Get status and steps for a run\n  cancel            Cancel a running workflow")
+		return fmt.Errorf("usage: kraai workflows <subcommand>\n\nSubcommands:\n  list              List workflow definitions for a server\n  create            Create a workflow definition\n  delete            Delete a workflow definition\n  trigger           Trigger a workflow run\n  runs              List runs for a workflow definition\n  status            Get status and steps for a run\n  cancel            Cancel a running workflow")
 	}
 
 	switch args[0] {
@@ -36,7 +36,7 @@ func runWorkflows(args []string) error {
 
 func workflowsList(args []string) error {
 	fs := flag.NewFlagSet("workflows list", flag.ContinueOnError)
-	projectID := fs.String("project", "", "Project ID")
+	serverID := fs.String("server", "", "Server ID")
 	fs.SetOutput(os.Stderr)
 	if err := fs.Parse(args); err != nil {
 		return err
@@ -46,7 +46,7 @@ func workflowsList(args []string) error {
 	if err != nil {
 		return err
 	}
-	pid, err := resolveProjectID(creds, *projectID, "")
+	pid, err := resolveServerID(creds, *serverID, "")
 	if err != nil {
 		return err
 	}
@@ -69,7 +69,7 @@ func workflowsList(args []string) error {
 
 func workflowsCreate(args []string) error {
 	fs := flag.NewFlagSet("workflows create", flag.ContinueOnError)
-	projectID := fs.String("project", "", "Project ID")
+	serverID := fs.String("server", "", "Server ID")
 	name := fs.String("name", "", "Workflow name (required)")
 	desc := fs.String("description", "", "Workflow description")
 	defFile := fs.String("file", "", "JSON file containing the workflow definition (required)")
@@ -78,14 +78,14 @@ func workflowsCreate(args []string) error {
 		return err
 	}
 	if *name == "" || *defFile == "" {
-		return fmt.Errorf("usage: kraai workflows create --name <name> --file <definition.json> [--project <id>]")
+		return fmt.Errorf("usage: kraai workflows create --name <name> --file <definition.json> [--server <id>]")
 	}
 
 	creds, err := requireCreds()
 	if err != nil {
 		return err
 	}
-	pid, err := resolveProjectID(creds, *projectID, "")
+	pid, err := resolveServerID(creds, *serverID, "")
 	if err != nil {
 		return err
 	}
@@ -109,20 +109,20 @@ func workflowsCreate(args []string) error {
 
 func workflowsDelete(args []string) error {
 	fs := flag.NewFlagSet("workflows delete", flag.ContinueOnError)
-	projectID := fs.String("project", "", "Project ID")
+	serverID := fs.String("server", "", "Server ID")
 	fs.SetOutput(os.Stderr)
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
 	if fs.NArg() < 1 {
-		return fmt.Errorf("usage: kraai workflows delete <definition-id> [--project <id>]")
+		return fmt.Errorf("usage: kraai workflows delete <definition-id> [--server <id>]")
 	}
 
 	creds, err := requireCreds()
 	if err != nil {
 		return err
 	}
-	pid, err := resolveProjectID(creds, *projectID, "")
+	pid, err := resolveServerID(creds, *serverID, "")
 	if err != nil {
 		return err
 	}
@@ -137,20 +137,20 @@ func workflowsDelete(args []string) error {
 
 func workflowsTrigger(args []string) error {
 	fs := flag.NewFlagSet("workflows trigger", flag.ContinueOnError)
-	projectID := fs.String("project", "", "Project ID")
+	serverID := fs.String("server", "", "Server ID")
 	fs.SetOutput(os.Stderr)
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
 	if fs.NArg() < 1 {
-		return fmt.Errorf("usage: kraai workflows trigger <definition-id> [--project <id>]")
+		return fmt.Errorf("usage: kraai workflows trigger <definition-id> [--server <id>]")
 	}
 
 	creds, err := requireCreds()
 	if err != nil {
 		return err
 	}
-	pid, err := resolveProjectID(creds, *projectID, "")
+	pid, err := resolveServerID(creds, *serverID, "")
 	if err != nil {
 		return err
 	}
@@ -166,20 +166,20 @@ func workflowsTrigger(args []string) error {
 
 func workflowsRuns(args []string) error {
 	fs := flag.NewFlagSet("workflows runs", flag.ContinueOnError)
-	projectID := fs.String("project", "", "Project ID")
+	serverID := fs.String("server", "", "Server ID")
 	fs.SetOutput(os.Stderr)
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
 	if fs.NArg() < 1 {
-		return fmt.Errorf("usage: kraai workflows runs <definition-id> [--project <id>]")
+		return fmt.Errorf("usage: kraai workflows runs <definition-id> [--server <id>]")
 	}
 
 	creds, err := requireCreds()
 	if err != nil {
 		return err
 	}
-	pid, err := resolveProjectID(creds, *projectID, "")
+	pid, err := resolveServerID(creds, *serverID, "")
 	if err != nil {
 		return err
 	}

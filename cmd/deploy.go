@@ -38,7 +38,7 @@ func runDeploy(args []string) error {
 	slug := fs.String("slug", "", "Route slug (default: derived from spec title)")
 	name := fs.String("name", "", "Project name (default: derived from spec title)")
 	wsID := fs.String("workspace", "", "Workspace ID (default: active workspace)")
-	projID := fs.String("project-id", "", "Deploy to an existing project (skip project creation)")
+	projID := fs.String("server-id", "", "Deploy to an existing server (skip server creation)")
 	baseURL := fs.String("base-url", "", "Override upstream base URL from spec")
 	fromURL := fs.String("from-url", "", "Fetch spec from this HTTPS URL instead of a local file")
 	authConn := fs.String("auth-connection", "", "Attach an auth connection ID at publish time")
@@ -115,18 +115,18 @@ func runDeploy(args []string) error {
 		fmt.Printf(" %s\n", ws.Name)
 	}
 
-	// Resolve or create project
+	// Resolve or create server
 	var projectID string
 	if *projID != "" {
 		projectID = *projID
-		fmt.Printf("Using existing project %s\n", projectID)
+		fmt.Printf("Using existing server %s\n", projectID)
 	} else {
-		fmt.Printf("Creating project %q...", *name)
-		proj, err := c.CreateProject(activeWS, *name)
+		fmt.Printf("Creating server %q...", *name)
+		srv, err := c.CreateServer(activeWS, *name)
 		if err != nil {
-			return fmt.Errorf("deploy: create project: %w", err)
+			return fmt.Errorf("deploy: create server: %w", err)
 		}
-		projectID = proj.ID
+		projectID = srv.ID
 		fmt.Printf(" done\n")
 	}
 
@@ -142,7 +142,7 @@ func runDeploy(args []string) error {
 		fmt.Printf(" done (source: %s)\n", src.ID)
 	} else {
 		fmt.Printf("Uploading spec...")
-		uploadURL := apiBaseURL + "/v1/projects/" + projectID + "/api-sources/upload"
+		uploadURL := apiBaseURL + "/v1/servers/" + projectID + "/api-sources/upload"
 		if *baseURL != "" {
 			params := url.Values{}
 			params.Set("base_url", *baseURL)
@@ -206,7 +206,7 @@ func runDeploy(args []string) error {
 	}
 	fmt.Println()
 	fmt.Printf("\n✓ MCP server live at %s\n", result.MCPURL)
-	fmt.Printf("  View in console: %s/projects/%s\n\n", appBaseURL, projectID)
+	fmt.Printf("  View in console: %s/servers/%s\n\n", appBaseURL, projectID)
 	printConnectInstructions(result)
 	return nil
 }
@@ -286,14 +286,14 @@ func runDeployActivate(args []string) error {
 	}
 
 	fs := flag.NewFlagSet("deploy activate", flag.ContinueOnError)
-	projectID := fs.String("project", "", "Project ID (required if workspace has multiple projects)")
+	serverID := fs.String("server", "", "Server ID (required if workspace has multiple servers)")
 	fs.SetOutput(os.Stderr)
 	if err := fs.Parse(flagArgs); err != nil {
 		return err
 	}
 
 	if len(posArgs) < 1 {
-		return fmt.Errorf("usage: kraai deploy activate <deployment-id> [--project <id>]")
+		return fmt.Errorf("usage: kraai deploy activate <deployment-id> [--server <id>]")
 	}
 	deploymentID := posArgs[0]
 
@@ -304,26 +304,31 @@ func runDeployActivate(args []string) error {
 
 	c := client.New(apiBaseURL, creds.Token)
 
-	// Resolve project ID if not provided.
-	pid := *projectID
+	// Resolve server ID if not provided.
+	pid := *serverID
+	if pid == "" {
+		if env := os.Getenv("KRAAI_SERVER_ID"); env != "" {
+			pid = env
+		}
+	}
 	if pid == "" {
 		wsID := creds.WorkspaceID
 		if wenv := os.Getenv("KRAAI_WORKSPACE_ID"); wenv != "" {
 			wsID = wenv
 		}
-		projects, err := c.ListProjects(wsID)
+		servers, err := c.ListServers(wsID)
 		if err != nil {
-			return fmt.Errorf("deploy activate: list projects: %w", err)
+			return fmt.Errorf("deploy activate: list servers: %w", err)
 		}
-		switch len(projects) {
+		switch len(servers) {
 		case 0:
-			return fmt.Errorf("deploy activate: no projects in workspace")
+			return fmt.Errorf("deploy activate: no servers in workspace")
 		case 1:
-			pid = projects[0].ID
+			pid = servers[0].ID
 		default:
-			fmt.Fprintln(os.Stderr, "Multiple projects found. Specify one with --project <id>:")
-			for _, p := range projects {
-				fmt.Fprintf(os.Stderr, "  %s  %s\n", p.ID, p.Name)
+			fmt.Fprintln(os.Stderr, "Multiple servers found. Specify one with --server <id>:")
+			for _, s := range servers {
+				fmt.Fprintf(os.Stderr, "  %s  %s\n", s.ID, s.Name)
 			}
 			os.Exit(1)
 		}
@@ -336,7 +341,7 @@ func runDeployActivate(args []string) error {
 	}
 	fmt.Println()
 	fmt.Printf("\n✓ Deployment activated at %s\n", result.MCPURL)
-	fmt.Printf("  View in console: %s/projects/%s/deployments\n\n", appBaseURL, pid)
+	fmt.Printf("  View in console: %s/servers/%s/deployments\n\n", appBaseURL, pid)
 	printConnectInstructions(result)
 	return nil
 }

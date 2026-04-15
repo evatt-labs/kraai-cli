@@ -10,7 +10,7 @@ import (
 
 func runUsage(args []string) error {
 	fs := flag.NewFlagSet("usage", flag.ContinueOnError)
-	projectID := fs.String("project", "", "Show usage for a specific project")
+	serverID := fs.String("server", "", "Show usage for a specific server")
 	workspaceID := fs.String("workspace", "", "Override active workspace")
 	fs.SetOutput(os.Stderr)
 	if err := fs.Parse(args); err != nil {
@@ -24,9 +24,9 @@ func runUsage(args []string) error {
 
 	c := client.New(apiBaseURL, creds.Token)
 
-	// Project-level usage.
-	if *projectID != "" {
-		return printProjectUsage(c, *projectID)
+	// Server-level usage.
+	if *serverID != "" {
+		return printServerUsage(c, *serverID)
 	}
 
 	// Workspace-level usage.
@@ -46,23 +46,23 @@ func runUsage(args []string) error {
 	fmt.Printf("Period:    %s to %s\n", formatDate(usage.PeriodStart), formatDate(usage.PeriodEnd))
 	fmt.Printf("Includes:  %d servers, %d seats, %d-day logs\n", usage.Entitlements.ActiveHostedServers, usage.Entitlements.MemberSeats, usage.Entitlements.LogRetentionDays)
 
-	if len(usage.ByProject) > 0 {
-		fmt.Println("\nBy project:")
-		for _, p := range usage.ByProject {
-			fmt.Printf("  %s  %d requests\n", p.ProjectID, p.Count)
+	if len(usage.ByServer) > 0 {
+		fmt.Println("\nBy server:")
+		for _, s := range usage.ByServer {
+			fmt.Printf("  %s  %d requests\n", s.ServerID, s.Count)
 		}
 	}
 
 	return nil
 }
 
-func printProjectUsage(c *client.Client, projectID string) error {
-	usage, err := c.GetProjectUsage(projectID)
+func printServerUsage(c *client.Client, serverID string) error {
+	usage, err := c.GetServerUsage(serverID)
 	if err != nil {
 		return fmt.Errorf("usage: %w", err)
 	}
 
-	fmt.Printf("Project:   %s\n", usage.ProjectID)
+	fmt.Printf("Server:    %s\n", usage.ServerID)
 	fmt.Printf("Plan:      %s\n", usage.Entitlements.Label)
 	fmt.Printf("Requests:  %d / %d (workspace limit)\n", usage.Count, usage.PlanLimit)
 	fmt.Printf("Period:    %s to %s\n", formatDate(usage.PeriodStart), formatDate(usage.PeriodEnd))

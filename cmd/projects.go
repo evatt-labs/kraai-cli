@@ -8,8 +8,11 @@ import (
 	"github.com/evatt-labs/kraai-cli/internal/client"
 )
 
+// runProjects is kept for backward-compat muscle memory but internally delegates
+// to the server model. Consider it a legacy alias — the canonical surface is
+// `kraai servers`.
 func runProjects(args []string) error {
-	fs := flag.NewFlagSet("projects", flag.ContinueOnError)
+	fs := flag.NewFlagSet("servers", flag.ContinueOnError)
 	fs.SetOutput(os.Stderr)
 	if err := fs.Parse(args); err != nil {
 		return err
@@ -22,29 +25,29 @@ func runProjects(args []string) error {
 
 	switch sub {
 	case "", "list":
-		return listProjects()
+		return listServers()
 	case "new", "create":
 		name := ""
 		if fs.NArg() >= 2 {
 			name = fs.Arg(1)
 		}
-		return createProject(name)
+		return createServer(name)
 	case "rename":
 		if fs.NArg() < 3 {
-			return fmt.Errorf("usage: kraai projects rename <project-id> <new-name>")
+			return fmt.Errorf("usage: kraai servers rename <server-id> <new-name>")
 		}
-		return renameProject(fs.Arg(1), fs.Arg(2))
+		return renameServer(fs.Arg(1), fs.Arg(2))
 	case "delete":
 		if fs.NArg() < 2 {
-			return fmt.Errorf("usage: kraai projects delete <project-id>")
+			return fmt.Errorf("usage: kraai servers delete <server-id>")
 		}
-		return deleteProject(fs.Arg(1))
+		return deleteServer(fs.Arg(1))
 	default:
-		return fmt.Errorf("unknown subcommand: %s\n\nUsage:\n  kraai projects [list]                  List projects in active workspace\n  kraai projects new [name]              Create a project\n  kraai projects rename <id> <name>      Rename a project\n  kraai projects delete <id>             Delete a project", sub)
+		return fmt.Errorf("unknown subcommand: %s\n\nUsage:\n  kraai servers [list]                  List servers in active workspace\n  kraai servers new [name]              Create a server\n  kraai servers rename <id> <name>      Rename a server\n  kraai servers delete <id>             Delete a server", sub)
 	}
 }
 
-func listProjects() error {
+func listServers() error {
 	creds, err := requireCreds()
 	if err != nil {
 		return err
@@ -54,21 +57,21 @@ func listProjects() error {
 	}
 
 	c := client.New(apiBaseURL, creds.Token)
-	projects, err := c.ListProjects(creds.WorkspaceID)
+	servers, err := c.ListServers(creds.WorkspaceID)
 	if err != nil {
-		return fmt.Errorf("projects: %w", err)
+		return fmt.Errorf("servers: %w", err)
 	}
 
-	for _, p := range projects {
-		fmt.Printf("  %s  %s\n", p.ID, p.Name)
+	for _, s := range servers {
+		fmt.Printf("  %s  %s\n", s.ID, s.Name)
 	}
-	if len(projects) == 0 {
-		fmt.Println("No projects found.")
+	if len(servers) == 0 {
+		fmt.Println("No servers found.")
 	}
 	return nil
 }
 
-func createProject(name string) error {
+func createServer(name string) error {
 	creds, err := requireCreds()
 	if err != nil {
 		return err
@@ -77,41 +80,41 @@ func createProject(name string) error {
 		return fmt.Errorf("no active workspace — run 'kraai workspaces use <id>'")
 	}
 	if name == "" {
-		return fmt.Errorf("usage: kraai projects new <name>")
+		return fmt.Errorf("usage: kraai servers new <name>")
 	}
 
 	c := client.New(apiBaseURL, creds.Token)
-	proj, err := c.CreateProject(creds.WorkspaceID, name)
+	srv, err := c.CreateServer(creds.WorkspaceID, name)
 	if err != nil {
-		return fmt.Errorf("projects new: %w", err)
+		return fmt.Errorf("servers new: %w", err)
 	}
 
-	fmt.Printf("Created project: %s (%s)\n", proj.Name, proj.ID)
+	fmt.Printf("Created server: %s (%s)\n", srv.Name, srv.ID)
 	return nil
 }
 
-func renameProject(id, name string) error {
+func renameServer(id, name string) error {
 	creds, err := requireCreds()
 	if err != nil {
 		return err
 	}
 	c := client.New(apiBaseURL, creds.Token)
-	if err := c.RenameProject(id, name); err != nil {
-		return fmt.Errorf("projects rename: %w", err)
+	if err := c.RenameServer(id, name); err != nil {
+		return fmt.Errorf("servers rename: %w", err)
 	}
-	fmt.Printf("Renamed project %s to %q\n", id, name)
+	fmt.Printf("Renamed server %s to %q\n", id, name)
 	return nil
 }
 
-func deleteProject(id string) error {
+func deleteServer(id string) error {
 	creds, err := requireCreds()
 	if err != nil {
 		return err
 	}
 	c := client.New(apiBaseURL, creds.Token)
-	if err := c.DeleteProject(id); err != nil {
-		return fmt.Errorf("projects delete: %w", err)
+	if err := c.DeleteServer(id); err != nil {
+		return fmt.Errorf("servers delete: %w", err)
 	}
-	fmt.Printf("Deleted project %s\n", id)
+	fmt.Printf("Deleted server %s\n", id)
 	return nil
 }

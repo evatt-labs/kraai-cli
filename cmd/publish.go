@@ -10,7 +10,7 @@ import (
 
 func runPublish(args []string) error {
 	fs := flag.NewFlagSet("publish", flag.ContinueOnError)
-	projectID := fs.String("project", "", "Target project ID (required if workspace has multiple projects)")
+	serverID := fs.String("server", "", "Target server ID (required if workspace has multiple servers)")
 	workspaceID := fs.String("workspace", "", "Override active workspace")
 	slug := fs.String("slug", "", "Route slug for the MCP URL (required)")
 	authConn := fs.String("auth-connection", "", "Attach an auth connection ID")
@@ -37,21 +37,24 @@ func runPublish(args []string) error {
 
 	c := client.New(apiBaseURL, creds.Token)
 
-	pid := *projectID
+	pid := *serverID
 	if pid == "" {
-		projects, err := c.ListProjects(wsID)
+		pid = os.Getenv("KRAAI_SERVER_ID")
+	}
+	if pid == "" {
+		servers, err := c.ListServers(wsID)
 		if err != nil {
-			return fmt.Errorf("publish: list projects: %w", err)
+			return fmt.Errorf("publish: list servers: %w", err)
 		}
-		switch len(projects) {
+		switch len(servers) {
 		case 0:
-			return fmt.Errorf("publish: no projects in workspace %s", wsID)
+			return fmt.Errorf("publish: no servers in workspace %s", wsID)
 		case 1:
-			pid = projects[0].ID
+			pid = servers[0].ID
 		default:
-			fmt.Fprintln(os.Stderr, "Multiple projects found. Specify one with --project <id>:")
-			for _, p := range projects {
-				fmt.Fprintf(os.Stderr, "  %s  %s\n", p.ID, p.Name)
+			fmt.Fprintln(os.Stderr, "Multiple servers found. Specify one with --server <id>:")
+			for _, s := range servers {
+				fmt.Fprintf(os.Stderr, "  %s  %s\n", s.ID, s.Name)
 			}
 			os.Exit(1)
 		}
@@ -63,7 +66,7 @@ func runPublish(args []string) error {
 		return fmt.Errorf("publish: slug %q is already taken", *slug)
 	}
 
-	fmt.Printf("Publishing project %s...\n", pid)
+	fmt.Printf("Publishing server %s...\n", pid)
 	result, err := c.Publish(pid, *slug, *authConn)
 	if err != nil {
 		return fmt.Errorf("publish: %w", err)

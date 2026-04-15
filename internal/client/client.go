@@ -225,31 +225,31 @@ func (c *Client) CreateWorkspace(name string) (*Workspace, error) {
 	return &out, c.decode(resp, &out)
 }
 
-// --- Projects ---
+// --- Servers ---
 
-type Project struct {
+type Server struct {
 	ID          string `json:"id"`
 	WorkspaceID string `json:"workspace_id"`
 	Name        string `json:"name"`
 }
 
-func (c *Client) ListProjects(workspaceID string) ([]Project, error) {
-	resp, err := c.do("GET", fmt.Sprintf("/v1/workspaces/%s/projects", workspaceID), nil)
+func (c *Client) ListServers(workspaceID string) ([]Server, error) {
+	resp, err := c.do("GET", fmt.Sprintf("/v1/workspaces/%s/servers", workspaceID), nil)
 	if err != nil {
 		return nil, err
 	}
 	var out struct {
-		Projects []Project `json:"projects"`
+		Servers []Server `json:"servers"`
 	}
-	return out.Projects, c.decode(resp, &out)
+	return out.Servers, c.decode(resp, &out)
 }
 
-func (c *Client) CreateProject(workspaceID, name string) (*Project, error) {
-	resp, err := c.do("POST", fmt.Sprintf("/v1/workspaces/%s/projects", workspaceID), map[string]string{"name": name})
+func (c *Client) CreateServer(workspaceID, name string) (*Server, error) {
+	resp, err := c.do("POST", fmt.Sprintf("/v1/workspaces/%s/servers", workspaceID), map[string]string{"name": name})
 	if err != nil {
 		return nil, err
 	}
-	var out Project
+	var out Server
 	return &out, c.decode(resp, &out)
 }
 
@@ -261,12 +261,12 @@ type APISource struct {
 	IngestFailureReason *string `json:"ingest_failure_reason,omitempty"`
 }
 
-func (c *Client) UploadSpec(projectID string, data []byte, filename string) (*APISource, error) {
-	return c.UploadSpecRaw(projectID, data, c.baseURL+"/v1/projects/"+projectID+"/api-sources/upload")
+func (c *Client) UploadSpec(serverID string, data []byte, filename string) (*APISource, error) {
+	return c.UploadSpecRaw(serverID, data, c.baseURL+"/v1/servers/"+serverID+"/api-sources/upload")
 }
 
 // UploadSpecRaw posts to a fully constructed URL (allows ?base_url= query param).
-func (c *Client) UploadSpecRaw(projectID string, data []byte, fullURL string) (*APISource, error) {
+func (c *Client) UploadSpecRaw(serverID string, data []byte, fullURL string) (*APISource, error) {
 	req, err := http.NewRequest("POST", fullURL, bytes.NewReader(data))
 	if err != nil {
 		return nil, fmt.Errorf("client: upload spec: %w", err)
@@ -282,8 +282,8 @@ func (c *Client) UploadSpecRaw(projectID string, data []byte, fullURL string) (*
 	return &out, c.decode(resp, &out)
 }
 
-func (c *Client) GetSources(projectID string) ([]APISource, error) {
-	resp, err := c.do("GET", "/v1/projects/"+projectID+"/api-sources", nil)
+func (c *Client) GetSources(serverID string) ([]APISource, error) {
+	resp, err := c.do("GET", "/v1/servers/"+serverID+"/api-sources", nil)
 	if err != nil {
 		return nil, err
 	}
@@ -296,14 +296,14 @@ func (c *Client) GetSources(projectID string) ([]APISource, error) {
 // --- Deployments ---
 
 type Deployment struct {
-	ID        string `json:"id"`
-	ProjectID string `json:"project_id"`
-	Status    string `json:"status"`
+	ID       string `json:"id"`
+	ServerID string `json:"server_id"`
+	Status   string `json:"status"`
 	CreatedAt string `json:"created_at"`
 }
 
-func (c *Client) ListDeployments(projectID string) ([]Deployment, error) {
-	resp, err := c.do("GET", fmt.Sprintf("/v1/projects/%s/deployments", projectID), nil)
+func (c *Client) ListDeployments(serverID string) ([]Deployment, error) {
+	resp, err := c.do("GET", fmt.Sprintf("/v1/servers/%s/deployments", serverID), nil)
 	if err != nil {
 		return nil, err
 	}
@@ -321,12 +321,12 @@ type PublishResult struct {
 	Entitlements    PlanEntitlements `json:"entitlements"`
 }
 
-func (c *Client) Publish(projectID, slug, authConnectionID string) (*PublishResult, error) {
+func (c *Client) Publish(serverID, slug, authConnectionID string) (*PublishResult, error) {
 	body := map[string]string{"slug": slug}
 	if authConnectionID != "" {
 		body["auth_connection_id"] = authConnectionID
 	}
-	resp, err := c.do("POST", fmt.Sprintf("/v1/projects/%s/deployments/publish", projectID), body)
+	resp, err := c.do("POST", fmt.Sprintf("/v1/servers/%s/deployments/publish", serverID), body)
 	if err != nil {
 		return nil, err
 	}
@@ -334,9 +334,9 @@ func (c *Client) Publish(projectID, slug, authConnectionID string) (*PublishResu
 	return &out, c.decode(resp, &out)
 }
 
-// CheckSlugAvailability checks if a slug is available for a project.
-func (c *Client) CheckSlugAvailability(projectID, slug string) (bool, error) {
-	resp, err := c.do("GET", fmt.Sprintf("/v1/projects/%s/slug-availability?slug=%s", projectID, url.QueryEscape(slug)), nil)
+// CheckSlugAvailability checks if a slug is available for a server.
+func (c *Client) CheckSlugAvailability(serverID, slug string) (bool, error) {
+	resp, err := c.do("GET", fmt.Sprintf("/v1/servers/%s/slug-availability?slug=%s", serverID, url.QueryEscape(slug)), nil)
 	if err != nil {
 		return false, err
 	}
@@ -346,8 +346,8 @@ func (c *Client) CheckSlugAvailability(projectID, slug string) (bool, error) {
 	return out.Available, c.decode(resp, &out)
 }
 
-func (c *Client) ActivateDeployment(projectID, deploymentID string) (*PublishResult, error) {
-	resp, err := c.do("POST", fmt.Sprintf("/v1/projects/%s/deployments/%s/activate", projectID, deploymentID), nil)
+func (c *Client) ActivateDeployment(serverID, deploymentID string) (*PublishResult, error) {
+	resp, err := c.do("POST", fmt.Sprintf("/v1/servers/%s/deployments/%s/activate", serverID, deploymentID), nil)
 	if err != nil {
 		return nil, err
 	}
@@ -356,9 +356,9 @@ func (c *Client) ActivateDeployment(projectID, deploymentID string) (*PublishRes
 }
 
 // ReissueDeploymentToken revokes existing static deployment tokens and returns
-// a freshly minted one. Used by `kraai deployments reissue-token`.
-func (c *Client) ReissueDeploymentToken(projectID, deploymentID string) (string, error) {
-	resp, err := c.do("POST", fmt.Sprintf("/v1/projects/%s/deployments/%s/reissue-token", projectID, deploymentID), nil)
+// a freshly minted one. Used by `kraai servers reissue-token`.
+func (c *Client) ReissueDeploymentToken(serverID, deploymentID string) (string, error) {
+	resp, err := c.do("POST", fmt.Sprintf("/v1/servers/%s/deployments/%s/reissue-token", serverID, deploymentID), nil)
 	if err != nil {
 		return "", err
 	}
@@ -394,23 +394,23 @@ func (c *Client) ListPlans() ([]PlanEntitlements, error) {
 // --- Usage ---
 
 type WorkspaceUsage struct {
-	WorkspaceID  string              `json:"workspace_id"`
-	Plan         string              `json:"plan"`
-	PlanLimit    int64               `json:"plan_limit"`
-	TotalCount   int64               `json:"total_count"`
-	PeriodStart  string              `json:"period_start"`
-	PeriodEnd    string              `json:"period_end"`
-	Entitlements PlanEntitlements    `json:"entitlements"`
-	ByProject    []ProjectUsageBrief `json:"by_project"`
+	WorkspaceID  string            `json:"workspace_id"`
+	Plan         string            `json:"plan"`
+	PlanLimit    int64             `json:"plan_limit"`
+	TotalCount   int64             `json:"total_count"`
+	PeriodStart  string            `json:"period_start"`
+	PeriodEnd    string            `json:"period_end"`
+	Entitlements PlanEntitlements  `json:"entitlements"`
+	ByServer     []ServerUsageBrief `json:"by_server"`
 }
 
-type ProjectUsageBrief struct {
-	ProjectID string `json:"project_id"`
-	Count     int64  `json:"count"`
+type ServerUsageBrief struct {
+	ServerID string `json:"server_id"`
+	Count    int64  `json:"count"`
 }
 
-type ProjectUsage struct {
-	ProjectID    string           `json:"project_id"`
+type ServerUsage struct {
+	ServerID     string           `json:"server_id"`
 	Plan         string           `json:"plan"`
 	PlanLimit    int64            `json:"plan_limit"`
 	Count        int64            `json:"count"`
@@ -428,12 +428,12 @@ func (c *Client) GetWorkspaceUsage(workspaceID string) (*WorkspaceUsage, error) 
 	return &out, c.decode(resp, &out)
 }
 
-func (c *Client) GetProjectUsage(projectID string) (*ProjectUsage, error) {
-	resp, err := c.do("GET", fmt.Sprintf("/v1/projects/%s/usage", projectID), nil)
+func (c *Client) GetServerUsage(serverID string) (*ServerUsage, error) {
+	resp, err := c.do("GET", fmt.Sprintf("/v1/servers/%s/usage", serverID), nil)
 	if err != nil {
 		return nil, err
 	}
-	var out ProjectUsage
+	var out ServerUsage
 	return &out, c.decode(resp, &out)
 }
 
@@ -454,8 +454,8 @@ type ListLogsResult struct {
 	NextCursor string       `json:"next_cursor"`
 }
 
-func (c *Client) ListLogs(projectID string, limit int, cursor string) (*ListLogsResult, error) {
-	path := fmt.Sprintf("/v1/projects/%s/logs?limit=%d", projectID, limit)
+func (c *Client) ListLogs(serverID string, limit int, cursor string) (*ListLogsResult, error) {
+	path := fmt.Sprintf("/v1/servers/%s/logs?limit=%d", serverID, limit)
 	if cursor != "" {
 		path += "&cursor=" + url.QueryEscape(cursor)
 	}
@@ -485,8 +485,8 @@ type CreateAuthConnectionInput struct {
 	Secret     string `json:"secret"`
 }
 
-func (c *Client) ListAuthConnections(projectID string) ([]AuthConnection, error) {
-	resp, err := c.do("GET", fmt.Sprintf("/v1/projects/%s/auth-connections", projectID), nil)
+func (c *Client) ListAuthConnections(serverID string) ([]AuthConnection, error) {
+	resp, err := c.do("GET", fmt.Sprintf("/v1/servers/%s/auth-connections", serverID), nil)
 	if err != nil {
 		return nil, err
 	}
@@ -496,8 +496,8 @@ func (c *Client) ListAuthConnections(projectID string) ([]AuthConnection, error)
 	return out.AuthConnections, c.decode(resp, &out)
 }
 
-func (c *Client) CreateAuthConnection(projectID string, input CreateAuthConnectionInput) (*AuthConnection, error) {
-	resp, err := c.do("POST", fmt.Sprintf("/v1/projects/%s/auth-connections", projectID), input)
+func (c *Client) CreateAuthConnection(serverID string, input CreateAuthConnectionInput) (*AuthConnection, error) {
+	resp, err := c.do("POST", fmt.Sprintf("/v1/servers/%s/auth-connections", serverID), input)
 	if err != nil {
 		return nil, err
 	}
@@ -505,8 +505,8 @@ func (c *Client) CreateAuthConnection(projectID string, input CreateAuthConnecti
 	return &out, c.decode(resp, &out)
 }
 
-func (c *Client) DeleteAuthConnection(projectID, id string) error {
-	resp, err := c.do("DELETE", fmt.Sprintf("/v1/projects/%s/auth-connections/%s", projectID, id), nil)
+func (c *Client) DeleteAuthConnection(serverID, id string) error {
+	resp, err := c.do("DELETE", fmt.Sprintf("/v1/servers/%s/auth-connections/%s", serverID, id), nil)
 	if err != nil {
 		return err
 	}
@@ -516,8 +516,8 @@ func (c *Client) DeleteAuthConnection(projectID, id string) error {
 
 // --- Fetch Spec from URL ---
 
-func (c *Client) FetchSpec(projectID, specURL string) (*APISource, error) {
-	resp, err := c.do("POST", fmt.Sprintf("/v1/projects/%s/api-sources/fetch", projectID),
+func (c *Client) FetchSpec(serverID, specURL string) (*APISource, error) {
+	resp, err := c.do("POST", fmt.Sprintf("/v1/servers/%s/api-sources/fetch", serverID),
 		map[string]string{"url": specURL})
 	if err != nil {
 		return nil, err
@@ -537,8 +537,8 @@ func (c *Client) RenameWorkspace(workspaceID, name string) error {
 	return checkStatus(resp)
 }
 
-func (c *Client) RenameProject(projectID, name string) error {
-	resp, err := c.do("PATCH", fmt.Sprintf("/v1/projects/%s", projectID), map[string]string{"name": name})
+func (c *Client) RenameServer(serverID, name string) error {
+	resp, err := c.do("PATCH", fmt.Sprintf("/v1/servers/%s", serverID), map[string]string{"name": name})
 	if err != nil {
 		return err
 	}
@@ -546,8 +546,8 @@ func (c *Client) RenameProject(projectID, name string) error {
 	return checkStatus(resp)
 }
 
-func (c *Client) DeleteProject(projectID string) error {
-	resp, err := c.do("DELETE", fmt.Sprintf("/v1/projects/%s", projectID), nil)
+func (c *Client) DeleteServer(serverID string) error {
+	resp, err := c.do("DELETE", fmt.Sprintf("/v1/servers/%s", serverID), nil)
 	if err != nil {
 		return err
 	}
@@ -584,8 +584,8 @@ type WorkflowStep struct {
 	CreatedAt string  `json:"created_at"`
 }
 
-func (c *Client) ListWorkflowDefinitions(projectID string) ([]WorkflowDefinition, error) {
-	resp, err := c.do("GET", fmt.Sprintf("/v1/projects/%s/workflow-definitions", projectID), nil)
+func (c *Client) ListWorkflowDefinitions(serverID string) ([]WorkflowDefinition, error) {
+	resp, err := c.do("GET", fmt.Sprintf("/v1/servers/%s/workflow-definitions", serverID), nil)
 	if err != nil {
 		return nil, err
 	}
@@ -595,8 +595,8 @@ func (c *Client) ListWorkflowDefinitions(projectID string) ([]WorkflowDefinition
 	return out.Definitions, c.decode(resp, &out)
 }
 
-func (c *Client) CreateWorkflowDefinition(projectID, name, description string, definition json.RawMessage) (*WorkflowDefinition, error) {
-	resp, err := c.do("POST", fmt.Sprintf("/v1/projects/%s/workflow-definitions", projectID), map[string]any{
+func (c *Client) CreateWorkflowDefinition(serverID, name, description string, definition json.RawMessage) (*WorkflowDefinition, error) {
+	resp, err := c.do("POST", fmt.Sprintf("/v1/servers/%s/workflow-definitions", serverID), map[string]any{
 		"name":        name,
 		"description": description,
 		"definition":  definition,
@@ -608,8 +608,8 @@ func (c *Client) CreateWorkflowDefinition(projectID, name, description string, d
 	return &out, c.decode(resp, &out)
 }
 
-func (c *Client) DeleteWorkflowDefinition(projectID, definitionID string) error {
-	resp, err := c.do("DELETE", fmt.Sprintf("/v1/projects/%s/workflow-definitions/%s", projectID, definitionID), nil)
+func (c *Client) DeleteWorkflowDefinition(serverID, definitionID string) error {
+	resp, err := c.do("DELETE", fmt.Sprintf("/v1/servers/%s/workflow-definitions/%s", serverID, definitionID), nil)
 	if err != nil {
 		return err
 	}
@@ -617,8 +617,8 @@ func (c *Client) DeleteWorkflowDefinition(projectID, definitionID string) error 
 	return checkStatus(resp)
 }
 
-func (c *Client) TriggerWorkflowRun(projectID, definitionID string) (*WorkflowRun, error) {
-	resp, err := c.do("POST", fmt.Sprintf("/v1/projects/%s/workflow-definitions/%s/runs", projectID, definitionID), nil)
+func (c *Client) TriggerWorkflowRun(serverID, definitionID string) (*WorkflowRun, error) {
+	resp, err := c.do("POST", fmt.Sprintf("/v1/servers/%s/workflow-definitions/%s/runs", serverID, definitionID), nil)
 	if err != nil {
 		return nil, err
 	}
@@ -626,8 +626,8 @@ func (c *Client) TriggerWorkflowRun(projectID, definitionID string) (*WorkflowRu
 	return &out, c.decode(resp, &out)
 }
 
-func (c *Client) ListWorkflowRuns(projectID, definitionID string) ([]WorkflowRun, error) {
-	resp, err := c.do("GET", fmt.Sprintf("/v1/projects/%s/workflow-definitions/%s/runs", projectID, definitionID), nil)
+func (c *Client) ListWorkflowRuns(serverID, definitionID string) ([]WorkflowRun, error) {
+	resp, err := c.do("GET", fmt.Sprintf("/v1/servers/%s/workflow-definitions/%s/runs", serverID, definitionID), nil)
 	if err != nil {
 		return nil, err
 	}

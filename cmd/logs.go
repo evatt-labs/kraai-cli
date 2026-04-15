@@ -11,7 +11,7 @@ import (
 
 func runLogs(args []string) error {
 	fs := flag.NewFlagSet("logs", flag.ContinueOnError)
-	projectID := fs.String("project", "", "Project ID (required)")
+	serverID := fs.String("server", "", "Server ID (required)")
 	workspaceID := fs.String("workspace", "", "Override active workspace")
 	tail := fs.Int("tail", 50, "Number of log entries to show")
 	follow := fs.Bool("follow", false, "Poll for new logs every 2 seconds")
@@ -25,9 +25,9 @@ func runLogs(args []string) error {
 		return err
 	}
 
-	pid := *projectID
+	pid := *serverID
 	if pid == "" {
-		pid, err = resolveProjectID(creds, "", *workspaceID)
+		pid, err = resolveServerID(creds, "", *workspaceID)
 		if err != nil {
 			return fmt.Errorf("logs: %w", err)
 		}

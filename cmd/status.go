@@ -25,7 +25,7 @@ func runStatus(args []string) error {
 	}
 
 	fs := flag.NewFlagSet("status", flag.ContinueOnError)
-	projectID := fs.String("project", "", "Show deployment status for a project")
+	serverID := fs.String("server", "", "Show deployment status for a server")
 	workspaceID := fs.String("workspace", "", "Override active workspace")
 	token := fs.String("token", "", "Bearer token for the MCP endpoint health check")
 	fs.SetOutput(os.Stderr)
@@ -38,12 +38,12 @@ func runStatus(args []string) error {
 		return statusBySlug(posArgs[0], *token)
 	}
 
-	// kraai status --project <id> — show deployment info from API.
-	if *projectID != "" {
-		return statusByProject(*projectID)
+	// kraai status --server <id> — show deployment info from API.
+	if *serverID != "" {
+		return statusByServer(*serverID)
 	}
 
-	// No args: try to resolve single project in workspace.
+	// No args: try to resolve single server in workspace.
 	creds, err := requireCreds()
 	if err != nil {
 		return err
@@ -55,23 +55,23 @@ func runStatus(args []string) error {
 	}
 
 	c := client.New(apiBaseURL, creds.Token)
-	projects, err := c.ListProjects(wsID)
+	servers, err := c.ListServers(wsID)
 	if err != nil {
-		return fmt.Errorf("status: list projects: %w", err)
+		return fmt.Errorf("status: list servers: %w", err)
 	}
-	switch len(projects) {
+	switch len(servers) {
 	case 0:
-		return fmt.Errorf("status: no projects in workspace")
+		return fmt.Errorf("status: no servers in workspace")
 	case 1:
-		return statusByProject(projects[0].ID)
+		return statusByServer(servers[0].ID)
 	default:
-			fmt.Fprintln(os.Stderr, "Multiple projects found. Specify one with --project <id> or pass a slug:")
-			fmt.Fprintln(os.Stderr)
-			fmt.Fprintln(os.Stderr, "  kraai status <slug>")
-			fmt.Fprintln(os.Stderr, "  kraai status --project <id>")
-			fmt.Fprintln(os.Stderr)
-		for _, p := range projects {
-			fmt.Fprintf(os.Stderr, "  %s  %s\n", p.ID, p.Name)
+		fmt.Fprintln(os.Stderr, "Multiple servers found. Specify one with --server <id> or pass a slug:")
+		fmt.Fprintln(os.Stderr)
+		fmt.Fprintln(os.Stderr, "  kraai status <slug>")
+		fmt.Fprintln(os.Stderr, "  kraai status --server <id>")
+		fmt.Fprintln(os.Stderr)
+		for _, s := range servers {
+			fmt.Fprintf(os.Stderr, "  %s  %s\n", s.ID, s.Name)
 		}
 		os.Exit(1)
 	}
@@ -96,26 +96,26 @@ func statusBySlug(slug, token string) error {
 	return nil
 }
 
-func statusByProject(projectID string) error {
+func statusByServer(serverID string) error {
 	creds, err := requireCreds()
 	if err != nil {
 		return err
 	}
 
 	c := client.New(apiBaseURL, creds.Token)
-	deployments, err := c.ListDeployments(projectID)
+	deployments, err := c.ListDeployments(serverID)
 	if err != nil {
 		return fmt.Errorf("status: %w", err)
 	}
 
 	if len(deployments) == 0 {
-		fmt.Println("No deployments found for this project.")
+		fmt.Println("No deployments found for this server.")
 		return nil
 	}
 
 	// Show the most recent deployment.
 	d := deployments[0]
-	fmt.Printf("Project:    %s\n", projectID)
+	fmt.Printf("Server:     %s\n", serverID)
 	fmt.Printf("Deployment: %s\n", d.ID)
 	fmt.Printf("Status:     %s\n", d.Status)
 	fmt.Printf("Created:    %s\n", d.CreatedAt)

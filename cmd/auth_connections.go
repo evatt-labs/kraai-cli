@@ -26,7 +26,7 @@ func runAuthConnections(args []string) error {
 
 func runAuthConnectionsList(args []string) error {
 	fs := flag.NewFlagSet("auth-connections", flag.ContinueOnError)
-	projectID := fs.String("project", "", "Project ID")
+	serverID := fs.String("server", "", "Server ID")
 	workspaceID := fs.String("workspace", "", "Override active workspace")
 	fs.SetOutput(os.Stderr)
 	if err := fs.Parse(args); err != nil {
@@ -38,7 +38,7 @@ func runAuthConnectionsList(args []string) error {
 		return err
 	}
 
-	pid, err := resolveProjectID(creds, *projectID, *workspaceID)
+	pid, err := resolveServerID(creds, *serverID, *workspaceID)
 	if err != nil {
 		return fmt.Errorf("auth-connections: %w", err)
 	}
@@ -62,7 +62,7 @@ func runAuthConnectionsList(args []string) error {
 
 func runAuthConnectionsCreate(args []string) error {
 	fs := flag.NewFlagSet("auth-connections create", flag.ContinueOnError)
-	projectID := fs.String("project", "", "Project ID")
+	serverID := fs.String("server", "", "Server ID")
 	workspaceID := fs.String("workspace", "", "Override active workspace")
 	name := fs.String("name", "", "Connection name")
 	kind := fs.String("kind", "", "Auth kind: api_key, bearer_token, basic_auth")
@@ -78,7 +78,7 @@ func runAuthConnectionsCreate(args []string) error {
 		return err
 	}
 
-	pid, err := resolveProjectID(creds, *projectID, *workspaceID)
+	pid, err := resolveServerID(creds, *serverID, *workspaceID)
 	if err != nil {
 		return fmt.Errorf("auth-connections create: %w", err)
 	}
@@ -130,7 +130,7 @@ func runAuthConnectionsCreate(args []string) error {
 
 func runAuthConnectionsDelete(args []string) error {
 	fs := flag.NewFlagSet("auth-connections delete", flag.ContinueOnError)
-	projectID := fs.String("project", "", "Project ID")
+	serverID := fs.String("server", "", "Server ID")
 	workspaceID := fs.String("workspace", "", "Override active workspace")
 	fs.SetOutput(os.Stderr)
 	if err := fs.Parse(args); err != nil {
@@ -138,7 +138,7 @@ func runAuthConnectionsDelete(args []string) error {
 	}
 
 	if fs.NArg() < 1 {
-		return fmt.Errorf("usage: kraai auth-connections delete <id> [--project <id>]")
+		return fmt.Errorf("usage: kraai auth-connections delete <id> [--server <id>]")
 	}
 	connID := fs.Arg(0)
 
@@ -147,7 +147,7 @@ func runAuthConnectionsDelete(args []string) error {
 		return err
 	}
 
-	pid, err := resolveProjectID(creds, *projectID, *workspaceID)
+	pid, err := resolveServerID(creds, *serverID, *workspaceID)
 	if err != nil {
 		return fmt.Errorf("auth-connections delete: %w", err)
 	}
@@ -161,11 +161,14 @@ func runAuthConnectionsDelete(args []string) error {
 	return nil
 }
 
-// resolveProjectID resolves a project ID from explicit flag, or auto-selects
-// if the workspace has exactly one project.
-func resolveProjectID(creds *config.Credentials, projectID, workspaceID string) (string, error) {
-	if projectID != "" {
-		return projectID, nil
+// resolveServerID resolves a server ID from explicit flag / KRAAI_SERVER_ID env,
+// or auto-selects if the workspace has exactly one server.
+func resolveServerID(creds *config.Credentials, serverID, workspaceID string) (string, error) {
+	if serverID != "" {
+		return serverID, nil
+	}
+	if env := os.Getenv("KRAAI_SERVER_ID"); env != "" {
+		return env, nil
 	}
 
 	wsID := resolveWorkspace(creds.WorkspaceID, workspaceID)
@@ -174,19 +177,19 @@ func resolveProjectID(creds *config.Credentials, projectID, workspaceID string) 
 	}
 
 	c := client.New(apiBaseURL, creds.Token)
-	projects, err := c.ListProjects(wsID)
+	servers, err := c.ListServers(wsID)
 	if err != nil {
-		return "", fmt.Errorf("list projects: %w", err)
+		return "", fmt.Errorf("list servers: %w", err)
 	}
-	switch len(projects) {
+	switch len(servers) {
 	case 0:
-		return "", fmt.Errorf("no projects in workspace")
+		return "", fmt.Errorf("no servers in workspace")
 	case 1:
-		return projects[0].ID, nil
+		return servers[0].ID, nil
 	default:
-		fmt.Fprintln(os.Stderr, "Multiple projects found. Specify one with --project <id>:")
-		for _, p := range projects {
-			fmt.Fprintf(os.Stderr, "  %s  %s\n", p.ID, p.Name)
+		fmt.Fprintln(os.Stderr, "Multiple servers found. Specify one with --server <id> or KRAAI_SERVER_ID:")
+		for _, s := range servers {
+			fmt.Fprintf(os.Stderr, "  %s  %s\n", s.ID, s.Name)
 		}
 		os.Exit(1)
 		return "", nil

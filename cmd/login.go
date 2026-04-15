@@ -72,13 +72,13 @@ func runLogin(args []string) error {
 			fmt.Printf("  ID:         %s\n", res.WorkspaceID)
 
 			authed := client.New(apiBaseURL, res.Token)
-			projects, err := authed.ListProjects(res.WorkspaceID)
+			servers, err := authed.ListServers(res.WorkspaceID)
 			if err != nil {
-				fmt.Fprintf(os.Stderr, "  warning: could not fetch projects: %v\n", err)
-			} else if len(projects) > 0 {
-				fmt.Printf("\n  Projects:\n")
-				for _, p := range projects {
-					fmt.Printf("    %-30s %s\n", p.Name, p.ID)
+				fmt.Fprintf(os.Stderr, "  warning: could not fetch servers: %v\n", err)
+			} else if len(servers) > 0 {
+				fmt.Printf("\n  Servers:\n")
+				for _, s := range servers {
+					fmt.Printf("    %-30s %s\n", s.Name, s.ID)
 				}
 			}
 			fmt.Println()

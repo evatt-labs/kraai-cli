@@ -71,7 +71,10 @@ func main() {
 		err = runConsole(rest)
 	case "workspaces":
 		err = runWorkspaces(rest)
+	case "servers":
+		err = runServers(rest)
 	case "projects":
+		// Legacy alias — internally delegates to the server model.
 		err = runProjects(rest)
 	case "plans":
 		err = runPlans(rest)
@@ -81,8 +84,6 @@ func main() {
 		err = runDeploy(rest)
 	case "publish":
 		err = runPublish(rest)
-	case "deployments":
-		err = runDeployments(rest)
 	case "tools":
 		err = runTools(rest)
 	case "tokens":
@@ -129,13 +130,11 @@ Commands:
   open               Open the console in your browser (optional: specify sub-page)
   console            Open the console home page in your browser
   workspaces         List, create, rename, delete, or switch workspaces
-  projects           List, create, rename, or delete projects
+  servers            List, create, rename, or delete servers; manage deployments
   plans              View or change workspace billing plan
   validate           Validate an OpenAPI spec file locally
   deploy             Upload (or fetch from URL) a spec and publish
-  deploy activate    Switch to a specific deployment version
-  publish            Publish the latest ready source for an existing project
-  deployments        List deployments for a project
+  publish            Publish the latest ready source for an existing server
   tools              List MCP tools exposed by a deployed server
   tokens             Manage workspace API tokens
   usage              View request counts and quota usage
@@ -154,6 +153,7 @@ Environment variables:
   KRAAI_API_BASE_URL   Override the API base URL
   KRAAI_TOKEN          Use this token instead of ~/.kraai/credentials
   KRAAI_WORKSPACE_ID   Override the active workspace
+  KRAAI_SERVER_ID      Override the active server
 
 `)
 }
