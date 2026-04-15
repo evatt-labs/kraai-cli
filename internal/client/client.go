@@ -256,8 +256,9 @@ func (c *Client) CreateProject(workspaceID, name string) (*Project, error) {
 // --- API Sources ---
 
 type APISource struct {
-	ID           string `json:"id"`
-	IngestStatus string `json:"ingest_status"`
+	ID                  string  `json:"id"`
+	IngestStatus        string  `json:"ingest_status"`
+	IngestFailureReason *string `json:"ingest_failure_reason,omitempty"`
 }
 
 func (c *Client) UploadSpec(projectID string, data []byte, filename string) (*APISource, error) {

@@ -168,8 +168,19 @@ func runDeploy(args []string) error {
 			continue
 		}
 		for _, s := range sources {
-			if s.ID == src.ID && s.IngestStatus == "ready" {
+			if s.ID != src.ID {
+				continue
+			}
+			switch s.IngestStatus {
+			case "ready":
 				ready = true
+			case "failed":
+				fmt.Println()
+				reason := "unknown reason"
+				if s.IngestFailureReason != nil && *s.IngestFailureReason != "" {
+					reason = *s.IngestFailureReason
+				}
+				return fmt.Errorf("deploy: spec processing failed: %s", reason)
 			}
 		}
 		if ready {
