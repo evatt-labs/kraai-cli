@@ -194,7 +194,8 @@ func runDeploy(args []string) error {
 		return fmt.Errorf("deploy: publish: %w", err)
 	}
 	fmt.Println()
-	fmt.Printf("\n✓ MCP server live at %s\n\n", result.MCPURL)
+	fmt.Printf("\n✓ MCP server live at %s\n", result.MCPURL)
+	fmt.Printf("  View in console: %s/projects/%s\n\n", appBaseURL, projectID)
 	printConnectInstructions(result)
 	return nil
 }
@@ -332,7 +333,8 @@ func runDeployActivate(args []string) error {
 		return fmt.Errorf("deploy activate: %w", err)
 	}
 	fmt.Println()
-	fmt.Printf("\n✓ Deployment activated at %s\n\n", result.MCPURL)
+	fmt.Printf("\n✓ Deployment activated at %s\n", result.MCPURL)
+	fmt.Printf("  View in console: %s/projects/%s/deployments\n\n", appBaseURL, pid)
 	printConnectInstructions(result)
 	return nil
 }

@@ -13,18 +13,25 @@ import (
 var version = "dev"
 
 var apiBaseURL = "https://api.kraai.dev"
+var appBaseURL = "https://app.kraai.dev"
 
 func init() {
 	if v := os.Getenv("KRAAI_API_BASE_URL"); v != "" {
 		apiBaseURL = v
-		parsed, err := url.Parse(v)
-		if err == nil && parsed.Scheme == "http" &&
-			parsed.Hostname() != "localhost" &&
-			!strings.HasSuffix(parsed.Hostname(), ".lvh.me") {
-			fmt.Fprintf(os.Stderr, "warning: KRAAI_API_BASE_URL uses http:// — credentials will be sent in cleartext\n")
-		}
 	} else if os.Getenv("KRAAI_ENV") == "local" {
 		apiBaseURL = "http://api.lvh.me"
+	}
+
+	if v := os.Getenv("KRAAI_APP_BASE_URL"); v != "" {
+		appBaseURL = v
+	} else if os.Getenv("KRAAI_ENV") == "local" {
+		appBaseURL = "http://lvh.me"
+	}
+
+	if parsed, err := url.Parse(apiBaseURL); err == nil && parsed.Scheme == "http" &&
+		parsed.Hostname() != "localhost" &&
+		!strings.HasSuffix(parsed.Hostname(), ".lvh.me") {
+		fmt.Fprintf(os.Stderr, "warning: API base URL uses http:// — credentials will be sent in cleartext\n")
 	}
 }
 
@@ -38,6 +45,7 @@ func main() {
 	args := os.Args[1:]
 	if len(args) > 0 && args[0] == "--local" {
 		apiBaseURL = "http://api.lvh.me"
+		appBaseURL = "http://lvh.me"
 		args = args[1:]
 	}
 
@@ -57,6 +65,10 @@ func main() {
 		err = runLogout(rest)
 	case "whoami":
 		err = runWhoami(rest)
+	case "open":
+		err = runOpen(rest)
+	case "console":
+		err = runConsole(rest)
 	case "workspaces":
 		err = runWorkspaces(rest)
 	case "projects":
@@ -114,6 +126,8 @@ Commands:
   login              Authenticate via browser (Device Authorization Grant)
   logout             Revoke the active CLI token
   whoami             Print the currently authenticated user and workspace
+  open               Open the console in your browser (optional: specify sub-page)
+  console            Open the console home page in your browser
   workspaces         List, create, rename, delete, or switch workspaces
   projects           List, create, rename, or delete projects
   plans              View or change workspace billing plan
