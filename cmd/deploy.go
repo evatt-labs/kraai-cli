@@ -212,38 +212,29 @@ func runDeploy(args []string) error {
 }
 
 func printConnectInstructions(result *client.PublishResult) {
-	switch result.WorkspacePlan {
-	case "pro", "business":
-		// Pro/Business: full OAuth 2.1 — Claude Desktop handles auth automatically.
-		// Static token is still available as a fallback.
-		fmt.Printf("  OAuth 2.1 is enabled. Add to Claude Desktop:\n")
+	// OAuth 2.1 (RFC 7591 dynamic client registration) is available on every
+	// plan — MCP spec conformance, not a paid feature. Clients that speak it
+	// (Claude Desktop, MCP Inspector) can connect with just the URL.
+	fmt.Printf("  OAuth 2.1 — Claude Desktop and other MCP-spec clients can connect with just the URL:\n")
+	fmt.Printf("  {\n")
+	fmt.Printf("    \"mcpServers\": {\n")
+	fmt.Printf("      \"kraai\": { \"url\": \"%s\" }\n", result.MCPURL)
+	fmt.Printf("    }\n")
+	fmt.Printf("  }\n\n")
+
+	if result.DeploymentToken != "" {
+		fmt.Printf("  Static bearer token (CI use, or clients that don't speak OAuth):\n")
+		fmt.Printf("  %s\n\n", result.DeploymentToken)
+		fmt.Printf("  Store it safely — it will not be shown again.\n\n")
+		fmt.Printf("  Bearer-auth connect snippet:\n")
 		fmt.Printf("  {\n")
 		fmt.Printf("    \"mcpServers\": {\n")
-		fmt.Printf("      \"kraai\": { \"url\": \"%s\" }\n", result.MCPURL)
+		fmt.Printf("      \"kraai\": {\n")
+		fmt.Printf("        \"url\": \"%s\",\n", result.MCPURL)
+		fmt.Printf("        \"headers\": { \"Authorization\": \"Bearer %s\" }\n", result.DeploymentToken)
+		fmt.Printf("      }\n")
 		fmt.Printf("    }\n")
 		fmt.Printf("  }\n\n")
-		if result.DeploymentToken != "" {
-			fmt.Printf("  Static bearer token (fallback / CI use):\n")
-			fmt.Printf("  %s\n\n", result.DeploymentToken)
-			fmt.Printf("  Store it safely — it will not be shown again.\n\n")
-		}
-	default:
-		// Free: static bearer token. User configures it manually in the MCP client.
-		fmt.Printf("  Free plan — connect with a static bearer token.\n\n")
-		if result.DeploymentToken != "" {
-			fmt.Printf("  Token: %s\n\n", result.DeploymentToken)
-			fmt.Printf("  Store it safely — it will not be shown again.\n\n")
-			fmt.Printf("  Add to Claude Desktop:\n")
-			fmt.Printf("  {\n")
-			fmt.Printf("    \"mcpServers\": {\n")
-			fmt.Printf("      \"kraai\": {\n")
-			fmt.Printf("        \"url\": \"%s\",\n", result.MCPURL)
-			fmt.Printf("        \"headers\": { \"Authorization\": \"Bearer %s\" }\n", result.DeploymentToken)
-			fmt.Printf("      }\n")
-			fmt.Printf("    }\n")
-			fmt.Printf("  }\n\n")
-			fmt.Printf("  Upgrade to Pro for OAuth 2.1 (no manual token config).\n\n")
-		}
 	}
 }
 
