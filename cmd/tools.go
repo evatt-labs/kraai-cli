@@ -56,7 +56,7 @@ func runTools(args []string) error {
 
 // runtimeBaseURL derives the runtime base URL from the API base URL.
 // Local: http://api.lvh.me → http://lvh.me
-// Prod:  https://api.kraai.dev → https://mcp.kraai.dev
+// Prod:  https://api.kraai.dev → https://sh.kraai.dev
 func runtimeBaseURL() string {
 	if v := os.Getenv("KRAAI_RUNTIME_BASE_URL"); v != "" {
 		return v
@@ -66,7 +66,7 @@ func runtimeBaseURL() string {
 	case strings.Contains(apiBaseURL, "api.lvh.me"):
 		return "http://lvh.me"
 	case strings.Contains(apiBaseURL, "api.kraai.dev"):
-		return "https://mcp.kraai.dev"
+		return "https://sh.kraai.dev"
 	default:
 		// Best guess: strip "api." prefix.
 		return strings.Replace(apiBaseURL, "api.", "", 1)
