@@ -24,15 +24,15 @@ func runUsage(args []string) error {
 
 	c := client.New(apiBaseURL, creds.Token)
 
-	// Server-level usage.
-	if *serverID != "" {
-		return printServerUsage(c, *serverID)
-	}
-
-	// Workspace-level usage.
+	// Workspace resolution
 	wsID := resolveWorkspace(creds.WorkspaceID, *workspaceID)
 	if wsID == "" {
 		return fmt.Errorf("no active workspace — run 'kraai workspaces use <id>'")
+	}
+
+	// Server-level usage.
+	if *serverID != "" {
+		return printServerUsage(c, wsID, *serverID)
 	}
 
 	usage, err := c.GetWorkspaceUsage(wsID)
@@ -56,8 +56,8 @@ func runUsage(args []string) error {
 	return nil
 }
 
-func printServerUsage(c *client.Client, serverID string) error {
-	usage, err := c.GetServerUsage(serverID)
+func printServerUsage(c *client.Client, workspaceID, serverID string) error {
+	usage, err := c.GetServerUsage(workspaceID, serverID)
 	if err != nil {
 		return fmt.Errorf("usage: %w", err)
 	}

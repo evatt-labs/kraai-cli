@@ -1,5 +1,8 @@
 kraai
 kraai.exe
+kraai-cli
+*.log
+*.err
 dist/
 !cmd/
 

@@ -26,7 +26,7 @@ func runTools(args []string) error {
 	// Build the MCP endpoint URL.
 	endpoint := *mcpURL
 	if endpoint == "" {
-		endpoint = runtimeBaseURL() + "/mcp/" + *slug
+		endpoint = runtimeBaseURL() + "/" + *slug
 	}
 
 	c := client.NewMCPClient(endpoint, *token)

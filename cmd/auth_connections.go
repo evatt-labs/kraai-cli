@@ -38,13 +38,13 @@ func runAuthConnectionsList(args []string) error {
 		return err
 	}
 
-	pid, err := resolveServerID(creds, *serverID, *workspaceID)
+	pid, wsID, err := resolveServerID(creds, *serverID, *workspaceID)
 	if err != nil {
 		return fmt.Errorf("auth-connections: %w", err)
 	}
 
 	c := client.New(apiBaseURL, creds.Token)
-	conns, err := c.ListAuthConnections(pid)
+	conns, err := c.ListAuthConnections(wsID, pid)
 	if err != nil {
 		return fmt.Errorf("auth-connections: %w", err)
 	}
@@ -78,7 +78,7 @@ func runAuthConnectionsCreate(args []string) error {
 		return err
 	}
 
-	pid, err := resolveServerID(creds, *serverID, *workspaceID)
+	pid, wsID, err := resolveServerID(creds, *serverID, *workspaceID)
 	if err != nil {
 		return fmt.Errorf("auth-connections create: %w", err)
 	}
@@ -112,7 +112,7 @@ func runAuthConnectionsCreate(args []string) error {
 	}
 
 	c := client.New(apiBaseURL, creds.Token)
-	ac, err := c.CreateAuthConnection(pid, client.CreateAuthConnectionInput{
+	ac, err := c.CreateAuthConnection(wsID, pid, client.CreateAuthConnectionInput{
 		Name:       *name,
 		Kind:       *kind,
 		InjectIn:   *injectIn,
@@ -147,13 +147,13 @@ func runAuthConnectionsDelete(args []string) error {
 		return err
 	}
 
-	pid, err := resolveServerID(creds, *serverID, *workspaceID)
+	pid, wsID, err := resolveServerID(creds, *serverID, *workspaceID)
 	if err != nil {
 		return fmt.Errorf("auth-connections delete: %w", err)
 	}
 
 	c := client.New(apiBaseURL, creds.Token)
-	if err := c.DeleteAuthConnection(pid, connID); err != nil {
+	if err := c.DeleteAuthConnection(wsID, pid, connID); err != nil {
 		return fmt.Errorf("auth-connections delete: %w", err)
 	}
 
@@ -163,36 +163,37 @@ func runAuthConnectionsDelete(args []string) error {
 
 // resolveServerID resolves a server ID from explicit flag / KRAAI_SERVER_ID env,
 // or auto-selects if the workspace has exactly one server.
-func resolveServerID(creds *config.Credentials, serverID, workspaceID string) (string, error) {
+func resolveServerID(creds *config.Credentials, serverID, workspaceID string) (string, string, error) {
+	wsID := resolveWorkspace(creds.WorkspaceID, workspaceID)
+
 	if serverID != "" {
-		return serverID, nil
+		return serverID, wsID, nil
 	}
 	if env := os.Getenv("KRAAI_SERVER_ID"); env != "" {
-		return env, nil
+		return env, wsID, nil
 	}
 
-	wsID := resolveWorkspace(creds.WorkspaceID, workspaceID)
 	if wsID == "" {
-		return "", fmt.Errorf("no active workspace — run 'kraai workspaces use <id>'")
+		return "", "", fmt.Errorf("no active workspace — run 'kraai workspaces use <id>'")
 	}
 
 	c := client.New(apiBaseURL, creds.Token)
 	servers, err := c.ListServers(wsID)
 	if err != nil {
-		return "", fmt.Errorf("list servers: %w", err)
+		return "", "", fmt.Errorf("list servers: %w", err)
 	}
 	switch len(servers) {
 	case 0:
-		return "", fmt.Errorf("no servers in workspace")
+		return "", "", fmt.Errorf("no servers in workspace")
 	case 1:
-		return servers[0].ID, nil
+		return servers[0].ID, wsID, nil
 	default:
 		fmt.Fprintln(os.Stderr, "Multiple servers found. Specify one with --server <id> or KRAAI_SERVER_ID:")
 		for _, s := range servers {
 			fmt.Fprintf(os.Stderr, "  %s  %s\n", s.ID, s.Name)
 		}
 		os.Exit(1)
-		return "", nil
+		return "", "", nil
 	}
 }
 

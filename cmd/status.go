@@ -35,51 +35,55 @@ func runStatus(args []string) error {
 
 	// kraai status <slug> — check if the live MCP endpoint responds.
 	if len(posArgs) > 0 {
-		return statusBySlug(posArgs[0], *token)
+		arg := posArgs[0]
+		if isUUID(arg) {
+			creds, err := requireCreds()
+			if err != nil {
+				return err
+			}
+			pid, wsID, err := resolveServerID(creds, arg, *workspaceID)
+			if err != nil {
+				return fmt.Errorf("status: %w", err)
+			}
+			return statusByServer(wsID, pid)
+		}
+		return statusBySlug(arg, *token)
 	}
 
-	// kraai status --server <id> — show deployment info from API.
-	if *serverID != "" {
-		return statusByServer(*serverID)
-	}
-
-	// No args: try to resolve single server in workspace.
 	creds, err := requireCreds()
 	if err != nil {
 		return err
 	}
 
-	wsID := resolveWorkspace(creds.WorkspaceID, *workspaceID)
-	if wsID == "" {
-		return fmt.Errorf("no active workspace — run 'kraai workspaces use <id>'")
+	pid, wsID, err := resolveServerID(creds, *serverID, *workspaceID)
+	if err != nil {
+		return fmt.Errorf("status: %w", err)
 	}
 
-	c := client.New(apiBaseURL, creds.Token)
-	servers, err := c.ListServers(wsID)
-	if err != nil {
-		return fmt.Errorf("status: list servers: %w", err)
-	}
-	switch len(servers) {
-	case 0:
-		return fmt.Errorf("status: no servers in workspace")
-	case 1:
-		return statusByServer(servers[0].ID)
-	default:
-		fmt.Fprintln(os.Stderr, "Multiple servers found. Specify one with --server <id> or pass a slug:")
-		fmt.Fprintln(os.Stderr)
-		fmt.Fprintln(os.Stderr, "  kraai status <slug>")
-		fmt.Fprintln(os.Stderr, "  kraai status --server <id>")
-		fmt.Fprintln(os.Stderr)
-		for _, s := range servers {
-			fmt.Fprintf(os.Stderr, "  %s  %s\n", s.ID, s.Name)
-		}
-		os.Exit(1)
-	}
-	return nil
+	return statusByServer(wsID, pid)
 }
 
+func isUUID(u string) bool {
+	if len(u) != 36 {
+		return false
+	}
+	for i, c := range u {
+		if i == 8 || i == 13 || i == 18 || i == 23 {
+			if c != '-' {
+				return false
+			}
+		} else {
+			if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')) {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+
 func statusBySlug(slug, token string) error {
-	endpoint := runtimeBaseURL() + "/mcp/" + slug
+	endpoint := runtimeBaseURL() + "/" + slug
 	fmt.Printf("Endpoint: %s\n", endpoint)
 	fmt.Printf("Checking...")
 
@@ -96,14 +100,14 @@ func statusBySlug(slug, token string) error {
 	return nil
 }
 
-func statusByServer(serverID string) error {
+func statusByServer(workspaceID, serverID string) error {
 	creds, err := requireCreds()
 	if err != nil {
 		return err
 	}
 
 	c := client.New(apiBaseURL, creds.Token)
-	deployments, err := c.ListDeployments(serverID)
+	deployments, err := c.ListDeployments(workspaceID, serverID)
 	if err != nil {
 		return fmt.Errorf("status: %w", err)
 	}

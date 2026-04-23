@@ -97,7 +97,7 @@ type DeviceCodeResponse struct {
 }
 
 func (c *Client) InitiateDeviceFlow() (*DeviceCodeResponse, error) {
-	resp, err := c.do("POST", "/v1/auth/device/code", map[string]string{})
+	resp, err := c.do("POST", "/oauth/device/authorize", map[string]string{})
 	if err != nil {
 		return nil, err
 	}
@@ -115,7 +115,7 @@ type DeviceTokenResponse struct {
 }
 
 func (c *Client) PollDeviceToken(deviceCode string) (*DeviceTokenResponse, error) {
-	resp, err := c.do("POST", "/v1/auth/device/token", map[string]string{
+	resp, err := c.do("POST", "/oauth/device/token", map[string]string{
 		"device_code": deviceCode,
 		"grant_type":  "urn:ietf:params:oauth:grant-type:device_code",
 	})
@@ -261,12 +261,12 @@ type APISource struct {
 	IngestFailureReason *string `json:"ingest_failure_reason,omitempty"`
 }
 
-func (c *Client) UploadSpec(serverID string, data []byte, filename string) (*APISource, error) {
-	return c.UploadSpecRaw(serverID, data, c.baseURL+"/v1/servers/"+serverID+"/api-sources/upload")
+func (c *Client) UploadSpec(workspaceID, serverID string, data []byte, filename string) (*APISource, error) {
+	return c.UploadSpecRaw(workspaceID, serverID, data, c.baseURL+"/v1/workspaces/"+workspaceID+"/servers/"+serverID+"/api-sources/upload")
 }
 
 // UploadSpecRaw posts to a fully constructed URL (allows ?base_url= query param).
-func (c *Client) UploadSpecRaw(serverID string, data []byte, fullURL string) (*APISource, error) {
+func (c *Client) UploadSpecRaw(workspaceID, serverID string, data []byte, fullURL string) (*APISource, error) {
 	req, err := http.NewRequest("POST", fullURL, bytes.NewReader(data))
 	if err != nil {
 		return nil, fmt.Errorf("client: upload spec: %w", err)
@@ -282,8 +282,8 @@ func (c *Client) UploadSpecRaw(serverID string, data []byte, fullURL string) (*A
 	return &out, c.decode(resp, &out)
 }
 
-func (c *Client) GetSources(serverID string) ([]APISource, error) {
-	resp, err := c.do("GET", "/v1/servers/"+serverID+"/api-sources", nil)
+func (c *Client) GetSources(workspaceID, serverID string) ([]APISource, error) {
+	resp, err := c.do("GET", "/v1/workspaces/"+workspaceID+"/servers/"+serverID+"/api-sources", nil)
 	if err != nil {
 		return nil, err
 	}
@@ -302,8 +302,8 @@ type Deployment struct {
 	CreatedAt string `json:"created_at"`
 }
 
-func (c *Client) ListDeployments(serverID string) ([]Deployment, error) {
-	resp, err := c.do("GET", fmt.Sprintf("/v1/servers/%s/deployments", serverID), nil)
+func (c *Client) ListDeployments(workspaceID, serverID string) ([]Deployment, error) {
+	resp, err := c.do("GET", fmt.Sprintf("/v1/workspaces/%s/servers/%s/deployments", workspaceID, serverID), nil)
 	if err != nil {
 		return nil, err
 	}
@@ -321,12 +321,12 @@ type PublishResult struct {
 	Entitlements    PlanEntitlements `json:"entitlements"`
 }
 
-func (c *Client) Publish(serverID, slug, authConnectionID string) (*PublishResult, error) {
+func (c *Client) Publish(workspaceID, serverID, slug, authConnectionID string) (*PublishResult, error) {
 	body := map[string]string{"slug": slug}
 	if authConnectionID != "" {
 		body["auth_connection_id"] = authConnectionID
 	}
-	resp, err := c.do("POST", fmt.Sprintf("/v1/servers/%s/deployments/publish", serverID), body)
+	resp, err := c.do("POST", fmt.Sprintf("/v1/workspaces/%s/servers/%s/deployments/publish", workspaceID, serverID), body)
 	if err != nil {
 		return nil, err
 	}
@@ -335,8 +335,8 @@ func (c *Client) Publish(serverID, slug, authConnectionID string) (*PublishResul
 }
 
 // CheckSlugAvailability checks if a slug is available for a server.
-func (c *Client) CheckSlugAvailability(serverID, slug string) (bool, error) {
-	resp, err := c.do("GET", fmt.Sprintf("/v1/servers/%s/slug-availability?slug=%s", serverID, url.QueryEscape(slug)), nil)
+func (c *Client) CheckSlugAvailability(workspaceID, serverID, slug string) (bool, error) {
+	resp, err := c.do("GET", fmt.Sprintf("/v1/workspaces/%s/servers/%s/slug-availability?slug=%s", workspaceID, serverID, url.QueryEscape(slug)), nil)
 	if err != nil {
 		return false, err
 	}
@@ -346,8 +346,8 @@ func (c *Client) CheckSlugAvailability(serverID, slug string) (bool, error) {
 	return out.Available, c.decode(resp, &out)
 }
 
-func (c *Client) ActivateDeployment(serverID, deploymentID string) (*PublishResult, error) {
-	resp, err := c.do("POST", fmt.Sprintf("/v1/servers/%s/deployments/%s/activate", serverID, deploymentID), nil)
+func (c *Client) ActivateDeployment(workspaceID, serverID, deploymentID string) (*PublishResult, error) {
+	resp, err := c.do("POST", fmt.Sprintf("/v1/workspaces/%s/servers/%s/deployments/%s/activate", workspaceID, serverID, deploymentID), nil)
 	if err != nil {
 		return nil, err
 	}
@@ -357,8 +357,8 @@ func (c *Client) ActivateDeployment(serverID, deploymentID string) (*PublishResu
 
 // ReissueDeploymentToken revokes existing static deployment tokens and returns
 // a freshly minted one. Used by `kraai servers reissue-token`.
-func (c *Client) ReissueDeploymentToken(serverID, deploymentID string) (string, error) {
-	resp, err := c.do("POST", fmt.Sprintf("/v1/servers/%s/deployments/%s/reissue-token", serverID, deploymentID), nil)
+func (c *Client) ReissueDeploymentToken(workspaceID, serverID, deploymentID string) (string, error) {
+	resp, err := c.do("POST", fmt.Sprintf("/v1/workspaces/%s/servers/%s/deployments/%s/reissue-token", workspaceID, serverID, deploymentID), nil)
 	if err != nil {
 		return "", err
 	}
@@ -428,8 +428,8 @@ func (c *Client) GetWorkspaceUsage(workspaceID string) (*WorkspaceUsage, error) 
 	return &out, c.decode(resp, &out)
 }
 
-func (c *Client) GetServerUsage(serverID string) (*ServerUsage, error) {
-	resp, err := c.do("GET", fmt.Sprintf("/v1/servers/%s/usage", serverID), nil)
+func (c *Client) GetServerUsage(workspaceID, serverID string) (*ServerUsage, error) {
+	resp, err := c.do("GET", fmt.Sprintf("/v1/workspaces/%s/servers/%s/usage", workspaceID, serverID), nil)
 	if err != nil {
 		return nil, err
 	}
@@ -454,8 +454,8 @@ type ListLogsResult struct {
 	NextCursor string       `json:"next_cursor"`
 }
 
-func (c *Client) ListLogs(serverID string, limit int, cursor string) (*ListLogsResult, error) {
-	path := fmt.Sprintf("/v1/servers/%s/logs?limit=%d", serverID, limit)
+func (c *Client) ListLogs(workspaceID, serverID string, limit int, cursor string) (*ListLogsResult, error) {
+	path := fmt.Sprintf("/v1/workspaces/%s/servers/%s/logs?limit=%d", workspaceID, serverID, limit)
 	if cursor != "" {
 		path += "&cursor=" + url.QueryEscape(cursor)
 	}
@@ -485,8 +485,8 @@ type CreateAuthConnectionInput struct {
 	Secret     string `json:"secret"`
 }
 
-func (c *Client) ListAuthConnections(serverID string) ([]AuthConnection, error) {
-	resp, err := c.do("GET", fmt.Sprintf("/v1/servers/%s/auth-connections", serverID), nil)
+func (c *Client) ListAuthConnections(workspaceID, serverID string) ([]AuthConnection, error) {
+	resp, err := c.do("GET", fmt.Sprintf("/v1/workspaces/%s/servers/%s/auth-connections", workspaceID, serverID), nil)
 	if err != nil {
 		return nil, err
 	}
@@ -496,8 +496,8 @@ func (c *Client) ListAuthConnections(serverID string) ([]AuthConnection, error) 
 	return out.AuthConnections, c.decode(resp, &out)
 }
 
-func (c *Client) CreateAuthConnection(serverID string, input CreateAuthConnectionInput) (*AuthConnection, error) {
-	resp, err := c.do("POST", fmt.Sprintf("/v1/servers/%s/auth-connections", serverID), input)
+func (c *Client) CreateAuthConnection(workspaceID, serverID string, input CreateAuthConnectionInput) (*AuthConnection, error) {
+	resp, err := c.do("POST", fmt.Sprintf("/v1/workspaces/%s/servers/%s/auth-connections", workspaceID, serverID), input)
 	if err != nil {
 		return nil, err
 	}
@@ -505,8 +505,8 @@ func (c *Client) CreateAuthConnection(serverID string, input CreateAuthConnectio
 	return &out, c.decode(resp, &out)
 }
 
-func (c *Client) DeleteAuthConnection(serverID, id string) error {
-	resp, err := c.do("DELETE", fmt.Sprintf("/v1/servers/%s/auth-connections/%s", serverID, id), nil)
+func (c *Client) DeleteAuthConnection(workspaceID, serverID, id string) error {
+	resp, err := c.do("DELETE", fmt.Sprintf("/v1/workspaces/%s/servers/%s/auth-connections/%s", workspaceID, serverID, id), nil)
 	if err != nil {
 		return err
 	}
@@ -516,8 +516,8 @@ func (c *Client) DeleteAuthConnection(serverID, id string) error {
 
 // --- Fetch Spec from URL ---
 
-func (c *Client) FetchSpec(serverID, specURL string) (*APISource, error) {
-	resp, err := c.do("POST", fmt.Sprintf("/v1/servers/%s/api-sources/fetch", serverID),
+func (c *Client) FetchSpec(workspaceID, serverID, specURL string) (*APISource, error) {
+	resp, err := c.do("POST", fmt.Sprintf("/v1/workspaces/%s/servers/%s/api-sources/fetch", workspaceID, serverID),
 		map[string]string{"url": specURL})
 	if err != nil {
 		return nil, err
@@ -537,8 +537,8 @@ func (c *Client) RenameWorkspace(workspaceID, name string) error {
 	return checkStatus(resp)
 }
 
-func (c *Client) RenameServer(serverID, name string) error {
-	resp, err := c.do("PATCH", fmt.Sprintf("/v1/servers/%s", serverID), map[string]string{"name": name})
+func (c *Client) RenameServer(workspaceID, serverID, name string) error {
+	resp, err := c.do("PATCH", fmt.Sprintf("/v1/workspaces/%s/servers/%s", workspaceID, serverID), map[string]string{"name": name})
 	if err != nil {
 		return err
 	}
@@ -546,8 +546,8 @@ func (c *Client) RenameServer(serverID, name string) error {
 	return checkStatus(resp)
 }
 
-func (c *Client) DeleteServer(serverID string) error {
-	resp, err := c.do("DELETE", fmt.Sprintf("/v1/servers/%s", serverID), nil)
+func (c *Client) DeleteServer(workspaceID, serverID string) error {
+	resp, err := c.do("DELETE", fmt.Sprintf("/v1/workspaces/%s/servers/%s", workspaceID, serverID), nil)
 	if err != nil {
 		return err
 	}
@@ -584,8 +584,8 @@ type WorkflowStep struct {
 	CreatedAt string  `json:"created_at"`
 }
 
-func (c *Client) ListWorkflowDefinitions(serverID string) ([]WorkflowDefinition, error) {
-	resp, err := c.do("GET", fmt.Sprintf("/v1/servers/%s/workflow-definitions", serverID), nil)
+func (c *Client) ListWorkflowDefinitions(workspaceID, serverID string) ([]WorkflowDefinition, error) {
+	resp, err := c.do("GET", fmt.Sprintf("/v1/workspaces/%s/servers/%s/workflow-definitions", workspaceID, serverID), nil)
 	if err != nil {
 		return nil, err
 	}
@@ -595,8 +595,8 @@ func (c *Client) ListWorkflowDefinitions(serverID string) ([]WorkflowDefinition,
 	return out.Definitions, c.decode(resp, &out)
 }
 
-func (c *Client) CreateWorkflowDefinition(serverID, name, description string, definition json.RawMessage) (*WorkflowDefinition, error) {
-	resp, err := c.do("POST", fmt.Sprintf("/v1/servers/%s/workflow-definitions", serverID), map[string]any{
+func (c *Client) CreateWorkflowDefinition(workspaceID, serverID, name, description string, definition json.RawMessage) (*WorkflowDefinition, error) {
+	resp, err := c.do("POST", fmt.Sprintf("/v1/workspaces/%s/servers/%s/workflow-definitions", workspaceID, serverID), map[string]any{
 		"name":        name,
 		"description": description,
 		"definition":  definition,
@@ -608,8 +608,8 @@ func (c *Client) CreateWorkflowDefinition(serverID, name, description string, de
 	return &out, c.decode(resp, &out)
 }
 
-func (c *Client) DeleteWorkflowDefinition(serverID, definitionID string) error {
-	resp, err := c.do("DELETE", fmt.Sprintf("/v1/servers/%s/workflow-definitions/%s", serverID, definitionID), nil)
+func (c *Client) DeleteWorkflowDefinition(workspaceID, serverID, definitionID string) error {
+	resp, err := c.do("DELETE", fmt.Sprintf("/v1/workspaces/%s/servers/%s/workflow-definitions/%s", workspaceID, serverID, definitionID), nil)
 	if err != nil {
 		return err
 	}
@@ -617,8 +617,8 @@ func (c *Client) DeleteWorkflowDefinition(serverID, definitionID string) error {
 	return checkStatus(resp)
 }
 
-func (c *Client) TriggerWorkflowRun(serverID, definitionID string) (*WorkflowRun, error) {
-	resp, err := c.do("POST", fmt.Sprintf("/v1/servers/%s/workflow-definitions/%s/runs", serverID, definitionID), nil)
+func (c *Client) TriggerWorkflowRun(workspaceID, serverID, definitionID string) (*WorkflowRun, error) {
+	resp, err := c.do("POST", fmt.Sprintf("/v1/workspaces/%s/servers/%s/workflow-definitions/%s/runs", workspaceID, serverID, definitionID), nil)
 	if err != nil {
 		return nil, err
 	}
@@ -626,8 +626,8 @@ func (c *Client) TriggerWorkflowRun(serverID, definitionID string) (*WorkflowRun
 	return &out, c.decode(resp, &out)
 }
 
-func (c *Client) ListWorkflowRuns(serverID, definitionID string) ([]WorkflowRun, error) {
-	resp, err := c.do("GET", fmt.Sprintf("/v1/servers/%s/workflow-definitions/%s/runs", serverID, definitionID), nil)
+func (c *Client) ListWorkflowRuns(workspaceID, serverID, definitionID string) ([]WorkflowRun, error) {
+	resp, err := c.do("GET", fmt.Sprintf("/v1/workspaces/%s/servers/%s/workflow-definitions/%s/runs", workspaceID, serverID, definitionID), nil)
 	if err != nil {
 		return nil, err
 	}

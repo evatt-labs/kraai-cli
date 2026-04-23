@@ -110,12 +110,12 @@ func runServerDeployments(args []string) error {
 		sid = posArgs[0]
 	}
 
-	sid, c, err := resolveServerAndClient(creds, sid, *workspaceID)
+	sid, wsID, c, err := resolveServerAndClient(creds, sid, *workspaceID)
 	if err != nil {
 		return err
 	}
 
-	deployments, err := c.ListDeployments(sid)
+	deployments, err := c.ListDeployments(wsID, sid)
 	if err != nil {
 		return fmt.Errorf("servers deployments: %w", err)
 	}
@@ -171,13 +171,13 @@ func runServerActivate(args []string) error {
 		sid = slug
 	}
 
-	sid, c, err := resolveServerAndClient(creds, sid, *workspaceID)
+	sid, wsID, c, err := resolveServerAndClient(creds, sid, *workspaceID)
 	if err != nil {
 		return err
 	}
 
 	fmt.Printf("Activating deployment %s...", deploymentID)
-	result, err := c.ActivateDeployment(sid, deploymentID)
+	result, err := c.ActivateDeployment(wsID, sid, deploymentID)
 	if err != nil {
 		return fmt.Errorf("servers activate: %w", err)
 	}
@@ -228,12 +228,12 @@ func runServerReissueToken(args []string) error {
 		sid = slug
 	}
 
-	sid, c, err := resolveServerAndClient(creds, sid, *workspaceID)
+	sid, wsID, c, err := resolveServerAndClient(creds, sid, *workspaceID)
 	if err != nil {
 		return err
 	}
 
-	token, err := c.ReissueDeploymentToken(sid, deploymentID)
+	token, err := c.ReissueDeploymentToken(wsID, sid, deploymentID)
 	if err != nil {
 		return fmt.Errorf("servers reissue-token: %w", err)
 	}
@@ -281,12 +281,12 @@ func runServerDelete(args []string) error {
 		sid = posArgs[0]
 	}
 
-	sid, c, err := resolveServerAndClient(creds, sid, *workspaceID)
+	sid, wsID, c, err := resolveServerAndClient(creds, sid, *workspaceID)
 	if err != nil {
 		return err
 	}
 
-	if err := c.DeleteServer(sid); err != nil {
+	if err := c.DeleteServer(wsID, sid); err != nil {
 		return fmt.Errorf("servers delete: %w", err)
 	}
 	fmt.Printf("✓ Server %s deleted.\n", sid)
@@ -296,7 +296,7 @@ func runServerDelete(args []string) error {
 // resolveServerAndClient picks a server ID from --server / KRAAI_SERVER_ID /
 // single-server shortcut and constructs an API client. Used by every servers
 // subcommand that requires a server context.
-func resolveServerAndClient(creds *config.Credentials, serverID, workspaceID string) (string, *client.Client, error) {
+func resolveServerAndClient(creds *config.Credentials, serverID, workspaceID string) (string, string, *client.Client, error) {
 	wsID := creds.WorkspaceID
 	if workspaceID != "" {
 		wsID = workspaceID
@@ -312,25 +312,25 @@ func resolveServerAndClient(creds *config.Credentials, serverID, workspaceID str
 		serverID = os.Getenv("KRAAI_SERVER_ID")
 	}
 	if serverID != "" {
-		return serverID, c, nil
+		return serverID, wsID, c, nil
 	}
 
 	// Auto-select if workspace has exactly one server.
 	servers, err := c.ListServers(wsID)
 	if err != nil {
-		return "", nil, fmt.Errorf("list servers: %w", err)
+		return "", "", nil, fmt.Errorf("list servers: %w", err)
 	}
 	switch len(servers) {
 	case 0:
-		return "", nil, fmt.Errorf("no servers in workspace")
+		return "", "", nil, fmt.Errorf("no servers in workspace")
 	case 1:
-		return servers[0].ID, c, nil
+		return servers[0].ID, wsID, c, nil
 	default:
 		fmt.Fprintln(os.Stderr, "Multiple servers found. Specify one with --server <id> or KRAAI_SERVER_ID:")
 		for _, s := range servers {
 			fmt.Fprintf(os.Stderr, "  %s  %s\n", s.ID, s.Name)
 		}
 		os.Exit(1)
-		return "", nil, nil // unreachable
+		return "", "", nil, nil // unreachable
 	}
 }

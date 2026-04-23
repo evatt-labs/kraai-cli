@@ -46,13 +46,13 @@ func workflowsList(args []string) error {
 	if err != nil {
 		return err
 	}
-	pid, err := resolveServerID(creds, *serverID, "")
+	pid, wsID, err := resolveServerID(creds, *serverID, "")
 	if err != nil {
 		return err
 	}
 
 	c := client.New(apiBaseURL, creds.Token)
-	defs, err := c.ListWorkflowDefinitions(pid)
+	defs, err := c.ListWorkflowDefinitions(wsID, pid)
 	if err != nil {
 		return fmt.Errorf("workflows list: %w", err)
 	}
@@ -85,7 +85,7 @@ func workflowsCreate(args []string) error {
 	if err != nil {
 		return err
 	}
-	pid, err := resolveServerID(creds, *serverID, "")
+	pid, wsID, err := resolveServerID(creds, *serverID, "")
 	if err != nil {
 		return err
 	}
@@ -99,7 +99,7 @@ func workflowsCreate(args []string) error {
 	}
 
 	c := client.New(apiBaseURL, creds.Token)
-	d, err := c.CreateWorkflowDefinition(pid, *name, *desc, data)
+	d, err := c.CreateWorkflowDefinition(wsID, pid, *name, *desc, data)
 	if err != nil {
 		return fmt.Errorf("workflows create: %w", err)
 	}
@@ -122,13 +122,13 @@ func workflowsDelete(args []string) error {
 	if err != nil {
 		return err
 	}
-	pid, err := resolveServerID(creds, *serverID, "")
+	pid, wsID, err := resolveServerID(creds, *serverID, "")
 	if err != nil {
 		return err
 	}
 
 	c := client.New(apiBaseURL, creds.Token)
-	if err := c.DeleteWorkflowDefinition(pid, fs.Arg(0)); err != nil {
+	if err := c.DeleteWorkflowDefinition(wsID, pid, fs.Arg(0)); err != nil {
 		return fmt.Errorf("workflows delete: %w", err)
 	}
 	fmt.Printf("Deleted workflow definition %s\n", fs.Arg(0))
@@ -150,13 +150,13 @@ func workflowsTrigger(args []string) error {
 	if err != nil {
 		return err
 	}
-	pid, err := resolveServerID(creds, *serverID, "")
+	pid, wsID, err := resolveServerID(creds, *serverID, "")
 	if err != nil {
 		return err
 	}
 
 	c := client.New(apiBaseURL, creds.Token)
-	run, err := c.TriggerWorkflowRun(pid, fs.Arg(0))
+	run, err := c.TriggerWorkflowRun(wsID, pid, fs.Arg(0))
 	if err != nil {
 		return fmt.Errorf("workflows trigger: %w", err)
 	}
@@ -179,13 +179,13 @@ func workflowsRuns(args []string) error {
 	if err != nil {
 		return err
 	}
-	pid, err := resolveServerID(creds, *serverID, "")
+	pid, wsID, err := resolveServerID(creds, *serverID, "")
 	if err != nil {
 		return err
 	}
 
 	c := client.New(apiBaseURL, creds.Token)
-	runs, err := c.ListWorkflowRuns(pid, fs.Arg(0))
+	runs, err := c.ListWorkflowRuns(wsID, pid, fs.Arg(0))
 	if err != nil {
 		return fmt.Errorf("workflows runs: %w", err)
 	}

@@ -135,21 +135,21 @@ func runDeploy(args []string) error {
 	if *fromURL != "" {
 		fmt.Printf("Fetching spec from URL...")
 		var fetchErr error
-		src, fetchErr = c.FetchSpec(projectID, *fromURL)
+		src, fetchErr = c.FetchSpec(activeWS, projectID, *fromURL)
 		if fetchErr != nil {
 			return fmt.Errorf("deploy: fetch spec: %w", fetchErr)
 		}
 		fmt.Printf(" done (source: %s)\n", src.ID)
 	} else {
 		fmt.Printf("Uploading spec...")
-		uploadURL := apiBaseURL + "/v1/servers/" + projectID + "/api-sources/upload"
+		uploadURL := apiBaseURL + "/v1/workspaces/" + activeWS + "/servers/" + projectID + "/api-sources/upload"
 		if *baseURL != "" {
 			params := url.Values{}
 			params.Set("base_url", *baseURL)
 			uploadURL += "?" + params.Encode()
 		}
 		var uploadErr error
-		src, uploadErr = c.UploadSpecRaw(projectID, data, uploadURL)
+		src, uploadErr = c.UploadSpecRaw(activeWS, projectID, data, uploadURL)
 		if uploadErr != nil {
 			return fmt.Errorf("deploy: upload spec: %w", uploadErr)
 		}
@@ -163,7 +163,7 @@ func runDeploy(args []string) error {
 	for time.Now().Before(deadline) {
 		time.Sleep(3 * time.Second)
 		fmt.Print(".")
-		sources, err := c.GetSources(projectID)
+		sources, err := c.GetSources(activeWS, projectID)
 		if err != nil {
 			continue
 		}
@@ -193,14 +193,14 @@ func runDeploy(args []string) error {
 	}
 
 	// Check slug availability
-	available, slugErr := c.CheckSlugAvailability(projectID, *slug)
+	available, slugErr := c.CheckSlugAvailability(activeWS, projectID, *slug)
 	if slugErr == nil && !available {
 		return fmt.Errorf("deploy: slug %q is already taken — use --slug to choose another", *slug)
 	}
 
 	// Publish
 	fmt.Printf("Publishing as %q...", *slug)
-	result, err := c.Publish(projectID, *slug, *authConn)
+	result, err := c.Publish(activeWS, projectID, *slug, *authConn)
 	if err != nil {
 		return fmt.Errorf("deploy: publish: %w", err)
 	}
@@ -302,40 +302,14 @@ func runDeployActivate(args []string) error {
 		return err
 	}
 
+	pid, wsID, err := resolveServerID(creds, *serverID, "")
+	if err != nil {
+		return fmt.Errorf("deploy activate: %w", err)
+	}
 	c := client.New(apiBaseURL, creds.Token)
 
-	// Resolve server ID if not provided.
-	pid := *serverID
-	if pid == "" {
-		if env := os.Getenv("KRAAI_SERVER_ID"); env != "" {
-			pid = env
-		}
-	}
-	if pid == "" {
-		wsID := creds.WorkspaceID
-		if wenv := os.Getenv("KRAAI_WORKSPACE_ID"); wenv != "" {
-			wsID = wenv
-		}
-		servers, err := c.ListServers(wsID)
-		if err != nil {
-			return fmt.Errorf("deploy activate: list servers: %w", err)
-		}
-		switch len(servers) {
-		case 0:
-			return fmt.Errorf("deploy activate: no servers in workspace")
-		case 1:
-			pid = servers[0].ID
-		default:
-			fmt.Fprintln(os.Stderr, "Multiple servers found. Specify one with --server <id>:")
-			for _, s := range servers {
-				fmt.Fprintf(os.Stderr, "  %s  %s\n", s.ID, s.Name)
-			}
-			os.Exit(1)
-		}
-	}
-
 	fmt.Printf("Activating deployment %s...", deploymentID)
-	result, err := c.ActivateDeployment(pid, deploymentID)
+	result, err := c.ActivateDeployment(wsID, pid, deploymentID)
 	if err != nil {
 		return fmt.Errorf("deploy activate: %w", err)
 	}

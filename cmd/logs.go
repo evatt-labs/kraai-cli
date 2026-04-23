@@ -25,25 +25,22 @@ func runLogs(args []string) error {
 		return err
 	}
 
-	pid := *serverID
-	if pid == "" {
-		pid, err = resolveServerID(creds, "", *workspaceID)
-		if err != nil {
-			return fmt.Errorf("logs: %w", err)
-		}
+	pid, wsID, err := resolveServerID(creds, *serverID, *workspaceID)
+	if err != nil {
+		return fmt.Errorf("logs: %w", err)
 	}
 
 	c := client.New(apiBaseURL, creds.Token)
 
 	if *follow {
-		return followLogs(c, pid, *tail)
+		return followLogs(c, wsID, pid, *tail)
 	}
 
-	return printLogs(c, pid, *tail)
+	return printLogs(c, wsID, pid, *tail)
 }
 
-func printLogs(c *client.Client, projectID string, limit int) error {
-	result, err := c.ListLogs(projectID, limit, "")
+func printLogs(c *client.Client, workspaceID, projectID string, limit int) error {
+	result, err := c.ListLogs(workspaceID, projectID, limit, "")
 	if err != nil {
 		return fmt.Errorf("logs: %w", err)
 	}
@@ -57,9 +54,9 @@ func printLogs(c *client.Client, projectID string, limit int) error {
 	return nil
 }
 
-func followLogs(c *client.Client, projectID string, initialLimit int) error {
+func followLogs(c *client.Client, workspaceID, projectID string, initialLimit int) error {
 	// Initial fetch.
-	result, err := c.ListLogs(projectID, initialLimit, "")
+	result, err := c.ListLogs(workspaceID, projectID, initialLimit, "")
 	if err != nil {
 		return fmt.Errorf("logs: %w", err)
 	}
@@ -81,7 +78,7 @@ func followLogs(c *client.Client, projectID string, initialLimit int) error {
 		time.Sleep(2 * time.Second)
 
 		// Fetch recent logs (small batch).
-		result, err := c.ListLogs(projectID, 50, "")
+		result, err := c.ListLogs(workspaceID, projectID, 50, "")
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "poll error: %v\n", err)
 			continue
